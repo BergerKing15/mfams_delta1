@@ -1,0 +1,38 @@
+{
+  "fredApi": {
+    "apiKey": "YOUR_FRED_API_KEY_HERE",
+    "baseUrl": "https://api.stlouisfed.org/fred",
+    "series": [
+      "UNRATE",
+      "CPIAUCSL",
+      "DGS10",
+      "FEDFUNDS"
+    ]
+  },
+  "yahooFinance": {
+    "symbols": [
+      "AAPL",
+      "MSFT",
+      "GOOGL",
+      "AMZN",
+      "TSLA"
+    ],
+    "interval": "1d"
+  },
+  "database": {
+    "path": "financial_data.db",
+    "type": "sqlite"
+  },
+  "dataProcessing": {
+    "startDate": "2024-01-01",
+    "endDate": "2024-12-31",
+    "fillMissingDays": true,
+    "removeOutliers": true,
+    "outlierIQRMultiplier": 1.5
+  },
+  "scheduling": {
+    "enabled": false,
+    "frequencyMinutes": 60,
+    "timeZone": "UTC"
+  }
+}
