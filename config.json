@@ -3,7 +3,7 @@
     "apiKey": "fc1d8c91793fd515c6b9a829047cde41",
     "baseUrl": "https://api.stlouisfed.org/fred",
     "series": [
-      "UNRATE"
+      "UNRATE", "CPIAUCSL", "FEDFUNDS"
     ]
   },
   "alphaVantage": {
