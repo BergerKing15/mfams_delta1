@@ -85,16 +85,30 @@ class BacktestEngine:
         
     def calculate_signals(self):
         """Generate trading signals based on Z-score"""
-        # Merge data on date
-        merged = pd.merge(
-            self.stock_df,
-            self.fred_df[['date', 'value']],
-            on='date',
-            how='inner'
-        ).sort_values('date')
+        # Start with stock data (daily)
+        merged = self.stock_df.copy()
         
         if len(merged) < self.ma_period:
             st.warning("Not enough data for backtesting")
+            return None
+        
+        # Forward-fill FRED values to match stock daily frequency
+        # Extend through the end of stock data (forward fill last FRED value if needed)
+        fred_filled = self.fred_df.set_index('date').reindex(
+            pd.date_range(self.fred_df['date'].min(), self.stock_df['date'].max(), freq='D'),
+            method='ffill'
+        ).reset_index()
+        fred_filled.columns = ['date', 'value']
+        
+        # Merge stock with forward-filled FRED
+        merged = pd.merge(merged, fred_filled, on='date', how='left')
+        merged = merged.sort_values('date').reset_index(drop=True)
+        
+        # Drop rows where we don't have FRED data (shouldn't happen with ffill, but safety check)
+        merged = merged.dropna(subset=['value']).reset_index(drop=True)
+        
+        if len(merged) < self.ma_period:
+            st.warning(f"Not enough overlapping data after merge ({len(merged)} records). Ensure stock data date range overlaps with FRED data.")
             return None
         
         # Calculate moving average of close price
@@ -104,7 +118,12 @@ class BacktestEngine:
         merged['deviation'] = merged['close'] - merged['ma']
         
         # Calculate Z-score of FRED value
-        merged['fred_zscore'] = stats.zscore(merged['value'].fillna(merged['value'].mean()))
+        fred_values = merged['value'].dropna()
+        if len(fred_values) > 1:
+            merged['fred_zscore'] = np.nan
+            merged.loc[fred_values.index, 'fred_zscore'] = stats.zscore(fred_values)
+        else:
+            merged['fred_zscore'] = 0
         
         # Trading signal: FRED high (Z > threshold) = bullish for stocks
         merged['signal'] = 0  # 0 = no position
@@ -114,6 +133,9 @@ class BacktestEngine:
         # Calculate returns
         merged['returns'] = merged['close'].pct_change()
         merged['strategy_returns'] = merged['signal'].shift(1) * merged['returns'] * self.position_size
+        
+        # Handle NaN values in strategy returns at the start
+        merged['strategy_returns'] = merged['strategy_returns'].fillna(0)
         
         return merged
     
