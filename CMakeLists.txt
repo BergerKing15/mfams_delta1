@@ -9,6 +9,7 @@ find_package(CURL REQUIRED)
 find_package(SQLite3 REQUIRED)
 
 # Include directories
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CURL_INCLUDE_DIRS})
 include_directories(${SQLite3_INCLUDE_DIRS})
 

@@ -1,0 +1,11 @@
+=== Financial Data Pipeline ===
+
+--- Fetching FRED Data ---
+Processing UNRATE...
+  Retrieved 938 observations
+  Successfully stored FRED data for UNRATE
+Processing CPIAUCSL...
+  Retrieved 950 observations
+  Successfully stored FRED data for CPIAUCSL
+Processing DGS10...
+  Retrieved 16755 observations

@@ -10,6 +10,9 @@
 #include <iomanip>
 #include <sstream>
 #include <set>
+#include <thread>
+#include <chrono>
+#include <fstream>
 
 using json = nlohmann::json;
 
@@ -54,7 +57,7 @@ bool IsWeekend(const std::string& dateStr) {
 class FREDClient {
 private:
     std::string apiKey;
-    std::string baseURL = "https://api.stlouisfed.org/fred/series/data";
+    std::string baseURL = "https://api.stlouisfed.org/fred/series/observations";
 
 public:
     FREDClient(const std::string& key) : apiKey(key) {}
@@ -75,6 +78,8 @@ public:
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+            curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
 
             CURLcode res = curl_easy_perform(curl);
             
@@ -98,88 +103,121 @@ public:
 };
 
 // ============================================================================
-// YAHOO FINANCE API CLIENT
+// ALPHA VANTAGE API CLIENT
 // ============================================================================
 
-class YahooFinanceClient {
+class AlphaVantageClient {
 private:
-    std::string baseURL = "https://query1.finance.yahoo.com/v7/finance/download/";
+    std::string apiKey;
+    std::string baseURL = "https://www.alphavantage.co/query";
 
 public:
-    // Fetch Yahoo Finance data for a stock symbol
-    json FetchStockData(const std::string& symbol, const std::string& startDate, 
-                        const std::string& endDate) {
+    AlphaVantageClient(const std::string& key) : apiKey(key) {}
+
+    // Fetch Alpha Vantage stock data
+    json FetchStockData(const std::string& symbol) {
         CURL* curl = curl_easy_init();
         std::string readBuffer;
         json result = json::array();
 
         if (curl) {
-            // Convert dates to Unix timestamps
-            std::time_t startTime = DateStringToTime(startDate);
-            std::time_t endTime = DateStringToTime(endDate);
-
-            std::string url = baseURL + symbol + 
-                            "?period1=" + std::to_string(startTime) +
-                            "&period2=" + std::to_string(endTime) +
-                            "&interval=1d&events=history&download=true";
+            // Use TIME_SERIES_DAILY (free tier) with compact output (last 100 days)
+            // Note: outputsize=full is a premium feature, so we use default compact
+            std::string url = baseURL + "?function=TIME_SERIES_DAILY" +
+                            "&symbol=" + symbol +
+                            "&apikey=" + apiKey;
+                            // Note: removed &outputsize=full as it's premium-only on free tier
 
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+            curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
 
             CURLcode res = curl_easy_perform(curl);
 
             if (res != CURLE_OK) {
-                std::cerr << "Yahoo Finance API Error: " << curl_easy_strerror(res) << std::endl;
+                std::cerr << "Alpha Vantage API Error for " << symbol << ": " 
+                          << curl_easy_strerror(res) << std::endl;
                 curl_easy_cleanup(curl);
                 return result;
             }
 
             curl_easy_cleanup(curl);
 
-            // Parse CSV response
-            result = ParseCSVResponse(readBuffer);
+            // Parse response
+            result = ParseAlphaVantageResponse(readBuffer);
         }
 
         return result;
     }
 
 private:
-    json ParseCSVResponse(const std::string& csv) {
+    json ParseAlphaVantageResponse(const std::string& response) {
         json result = json::array();
-        std::istringstream stream(csv);
-        std::string line;
-        bool isHeader = true;
 
-        while (std::getline(stream, line)) {
-            if (isHeader) {
-                isHeader = false;
-                continue;  // Skip header row
+        try {
+            json responseJson = json::parse(response);
+
+            // Check for error messages
+            if (responseJson.contains("Error Message")) {
+                std::cerr << "API Error: " << responseJson["Error Message"].get<std::string>() << std::endl;
+                return result;
             }
 
-            if (line.empty()) continue;
-
-            // Parse CSV line (Date,Open,High,Low,Close,Adj Close,Volume)
-            std::istringstream lineStream(line);
-            std::vector<std::string> fields;
-            std::string field;
-
-            while (std::getline(lineStream, field, ',')) {
-                fields.push_back(field);
+            if (responseJson.contains("Note")) {
+                std::cerr << "API Rate Limit: " << responseJson["Note"].get<std::string>() << std::endl;
+                return result;
             }
 
-            if (fields.size() >= 7) {
-                json dataPoint = {
-                    {"date", fields[0]},
-                    {"open", std::stod(fields[1])},
-                    {"high", std::stod(fields[2])},
-                    {"low", std::stod(fields[3])},
-                    {"close", std::stod(fields[4])},
-                    {"adjClose", std::stod(fields[5])},
-                    {"volume", std::stoll(fields[6])}
-                };
-                result.push_back(dataPoint);
+            if (responseJson.contains("Information")) {
+                std::cerr << "API Information: " << responseJson["Information"].get<std::string>() << std::endl;
+                return result;
             }
+
+            // Extract time series data - looking for "Time Series (Daily)" key
+            std::string timeSeriesKey = "Time Series (Daily)";
+            if (!responseJson.contains(timeSeriesKey)) {
+                std::cerr << "No time series data in response (key: " << timeSeriesKey << ")" << std::endl;
+                return result;
+            }
+
+            auto timeSeries = responseJson[timeSeriesKey];
+
+            // Iterate through each date and build result
+            for (auto it = timeSeries.begin(); it != timeSeries.end(); ++it) {
+                std::string date = it.key();
+                auto dayData = it.value();
+
+                try {
+                    double open = std::stod(dayData["1. open"].get<std::string>());
+                    double high = std::stod(dayData["2. high"].get<std::string>());
+                    double low = std::stod(dayData["3. low"].get<std::string>());
+                    double close = std::stod(dayData["4. close"].get<std::string>());
+                    long volume = std::stoll(dayData["5. volume"].get<std::string>());
+
+                    json dataPoint = {
+                        {"date", date},
+                        {"open", open},
+                        {"high", high},
+                        {"low", low},
+                        {"close", close},
+                        {"adjClose", close},  // Use close as adjClose for free tier
+                        {"volume", volume}
+                    };
+
+                    result.push_back(dataPoint);
+                } catch (const std::exception& e) {
+                    std::cerr << "Error parsing day data for " << date << ": " << e.what() << std::endl;
+                    continue;
+                }
+            }
+
+            std::cout << "  Parsed " << result.size() << " days from Alpha Vantage" << std::endl;
+
+        } catch (const std::exception& e) {
+            std::cerr << "JSON Parse Error: " << e.what() << std::endl;
         }
 
         return result;
@@ -209,21 +247,37 @@ public:
     }
 
     // Fill missing days with forward fill (last known value)
-    json FillMissingDays(const json& data, const std::string& startDate, 
-                         const std::string& endDate) {
+    // If data is empty, return as-is
+    // If data has dates, use the date range from the data itself, not a fixed range
+    json FillMissingDays(const json& data, const std::string& startDate = "", 
+                         const std::string& endDate = "") {
         json filled = json::array();
-        std::set<std::string> existingDates;
+        
+        if (data.empty()) {
+            return filled;
+        }
 
-        // Collect all existing dates
+        std::set<std::string> existingDates;
+        std::string minDate = "9999-12-31";
+        std::string maxDate = "0000-01-01";
+
+        // Collect all existing dates and find the range in the data
         for (const auto& point : data) {
             if (point.contains("date")) {
-                existingDates.insert(point["date"].get<std::string>());
+                std::string date = point["date"].get<std::string>();
+                existingDates.insert(date);
+                if (date < minDate) minDate = date;
+                if (date > maxDate) maxDate = date;
             }
         }
 
+        // Use data's date range if fixed range is not provided
+        std::string actualStartDate = startDate.empty() ? minDate : startDate;
+        std::string actualEndDate = endDate.empty() ? maxDate : endDate;
+
         // Generate all business days in range
-        std::time_t currentTime = DateStringToTime(startDate);
-        std::time_t endTimeVal = DateStringToTime(endDate);
+        std::time_t currentTime = DateStringToTime(actualStartDate);
+        std::time_t endTimeVal = DateStringToTime(actualEndDate);
         const int SECONDS_PER_DAY = 86400;
         json lastValue = json::object();
 
@@ -400,7 +454,20 @@ public:
             if (!point.contains("date") || !point.contains("value")) continue;
 
             std::string date = point["date"].get<std::string>();
-            double value = point["value"].is_null() ? 0.0 : point["value"].get<double>();
+            
+            // Handle value field: can be string, number, or null
+            double value = 0.0;
+            if (point["value"].is_null()) {
+                continue;  // Skip null values
+            } else if (point["value"].is_number()) {
+                value = point["value"].get<double>();
+            } else if (point["value"].is_string()) {
+                try {
+                    value = std::stod(point["value"].get<std::string>());
+                } catch (...) {
+                    continue;  // Skip if can't parse
+                }
+            }
 
             std::string sql = "INSERT OR REPLACE INTO " + tableName + 
                             " (date, value) VALUES (?, ?);";
@@ -513,18 +580,54 @@ public:
 // MAIN PIPELINE
 // ============================================================================
 
-int main(int argc, char* argv[]) {
+json LoadConfiguration(const std::string& configPath) {
+    std::ifstream configFile(configPath);
+    if (!configFile.is_open()) {
+        std::cerr << "Failed to open config file: " << configPath << std::endl;
+        return json::object();
+    }
+
+    json config;
+    try {
+        configFile >> config;
+        return config;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to parse config file: " << e.what() << std::endl;
+        return json::object();
+    }
+}
+
+int main() {
     std::cout << "=== Financial Data Pipeline ===" << std::endl;
 
-    // Configuration
-    std::string fredApiKey = "YOUR_FRED_API_KEY";  // Replace with your API key
-    std::string dbPath = "financial_data.db";
-    std::string startDate = "2024-01-01";
-    std::string endDate = "2024-12-31";
+    // Load configuration from config.json
+    json config = LoadConfiguration("config.json");
+    if (config.is_null() || config.empty()) {
+        std::cerr << "Failed to load configuration" << std::endl;
+        return 1;
+    }
+
+    // Extract configuration values
+    std::string fredApiKey = config["fredApi"]["apiKey"].get<std::string>();
+    std::string alphaVantageApiKey = config["alphaVantage"]["apiKey"].get<std::string>();
+    std::string dbPath = config["database"]["path"].get<std::string>();
+    
+    std::vector<std::string> fredSeries;
+    for (const auto& series : config["fredApi"]["series"]) {
+        fredSeries.push_back(series.get<std::string>());
+    }
+
+    std::vector<std::string> stocks;
+    for (const auto& symbol : config["alphaVantage"]["symbols"]) {
+        stocks.push_back(symbol.get<std::string>());
+    }
+
+    std::string startDate = config["dataProcessing"]["startDate"].get<std::string>();
+    std::string endDate = config["dataProcessing"]["endDate"].get<std::string>();
 
     // Initialize components
     FREDClient fredClient(fredApiKey);
-    YahooFinanceClient yahooClient;
+    AlphaVantageClient alphaVantageClient(alphaVantageApiKey);
     DataCleaner cleaner;
     DatabaseManager dbManager(dbPath);
 
@@ -535,33 +638,34 @@ int main(int argc, char* argv[]) {
 
     // ========== FRED Data Pipeline ==========
     std::cout << "\n--- Fetching FRED Data ---" << std::endl;
-    std::string fredSeriesId = "UNRATE";  // Unemployment Rate
-    
-    if (dbManager.CreateFREDTable(fredSeriesId)) {
-        json fredData = fredClient.FetchSeriesData(fredSeriesId, startDate, endDate);
+    for (const auto& seriesId : fredSeries) {
+        std::cout << "Processing " << seriesId << "..." << std::endl;
+        
+        if (dbManager.CreateFREDTable(seriesId)) {
+            json fredData = fredClient.FetchSeriesData(seriesId, "1900-01-01", "2099-12-31");
 
-        if (!fredData.empty() && fredData.contains("observations")) {
-            std::cout << "Retrieved " << fredData["observations"].size() << " FRED observations" << std::endl;
-            
-            // Insert data
-            if (dbManager.InsertFREDData(fredSeriesId, fredData["observations"])) {
-                std::cout << "Successfully stored FRED data for " << fredSeriesId << std::endl;
+            if (!fredData.empty() && fredData.contains("observations")) {
+                std::cout << "  Retrieved " << fredData["observations"].size() << " observations" << std::endl;
+                
+                // Insert data
+                if (dbManager.InsertFREDData(seriesId, fredData["observations"])) {
+                    std::cout << "  Successfully stored FRED data for " << seriesId << std::endl;
+                }
+            } else {
+                std::cout << "  No FRED data returned for " << seriesId << std::endl;
             }
-        } else {
-            std::cout << "No FRED data returned (API key may be invalid)" << std::endl;
         }
     }
 
-    // ========== Yahoo Finance Data Pipeline ==========
-    std::cout << "\n--- Fetching Yahoo Finance Data ---" << std::endl;
-    std::vector<std::string> symbols = {"AAPL", "MSFT", "GOOGL"};  // Add symbols as needed
+    // ========== Alpha Vantage Stock Data Pipeline ==========
+    std::cout << "\n--- Fetching Stock Data from Alpha Vantage ---" << std::endl;
 
-    for (const auto& symbol : symbols) {
+    for (const auto& symbol : stocks) {
         std::cout << "Processing " << symbol << "..." << std::endl;
 
         if (dbManager.CreateStockTable(symbol)) {
-            // Fetch raw data
-            json rawData = yahooClient.FetchStockData(symbol, startDate, endDate);
+            // Fetch raw data from Alpha Vantage
+            json rawData = alphaVantageClient.FetchStockData(symbol);
             
             if (!rawData.empty()) {
                 std::cout << "  Retrieved " << rawData.size() << " raw price points" << std::endl;
@@ -571,7 +675,8 @@ int main(int argc, char* argv[]) {
                 std::cout << "  After outlier removal: " << cleanedData.size() << " points" << std::endl;
 
                 // Fill missing business days
-                json filledData = cleaner.FillMissingDays(cleanedData, startDate, endDate);
+                // FillMissingDays will auto-detect date range if not provided
+                json filledData = cleaner.FillMissingDays(cleanedData);
                 std::cout << "  After filling missing days: " << filledData.size() << " points" << std::endl;
 
                 // Store in database
@@ -579,20 +684,34 @@ int main(int argc, char* argv[]) {
                     std::cout << "  Successfully stored data for " << symbol << std::endl;
                 }
             } else {
-                std::cout << "  No data returned for " << symbol << std::endl;
+                std::cout << "  No data returned for " << symbol << " (check API key and rate limits)" << std::endl;
             }
         }
+        
+        // Add delay between requests to respect API rate limits (Alpha Vantage: 5 requests/min free tier)
+        std::this_thread::sleep_for(std::chrono::seconds(12));
     }
 
     // ========== Verify Stored Data ==========
     std::cout << "\n--- Verifying Stored Data ---" << std::endl;
-    json stockData = dbManager.RetrieveData("stock_AAPL");
+    
+    // Check FRED data
+    json fredCheck = dbManager.RetrieveData("fred_UNRATE");
+    if (!fredCheck.empty()) {
+        std::cout << "FRED UNRATE: " << fredCheck.size() << " records" << std::endl;
+    }
+
+    // Check stock data
+    json stockData = dbManager.RetrieveData("stock_GDX");
     if (!stockData.empty()) {
-        std::cout << "Sample AAPL data (first 3 records):" << std::endl;
+        std::cout << "Stock GDX: " << stockData.size() << " records" << std::endl;
+        std::cout << "Sample GDX data (first 3 records):" << std::endl;
         for (size_t i = 0; i < std::min(size_t(3), stockData.size()); i++) {
             std::cout << "  " << stockData[i]["date"] << ": Close=$" 
                       << stockData[i]["close"] << std::endl;
         }
+    } else {
+        std::cout << "No stock data available yet" << std::endl;
     }
 
     std::cout << "\n=== Pipeline Complete ===" << std::endl;

@@ -1,23 +1,23 @@
 {
   "fredApi": {
-    "apiKey": "YOUR_FRED_API_KEY_HERE",
+    "apiKey": "fc1d8c91793fd515c6b9a829047cde41",
     "baseUrl": "https://api.stlouisfed.org/fred",
     "series": [
-      "UNRATE",
-      "CPIAUCSL",
-      "DGS10",
-      "FEDFUNDS"
+      "UNRATE"
     ]
   },
-  "yahooFinance": {
+  "alphaVantage": {
+    "apiKey": "LDH5SBMS1ZZ3NW35",
     "symbols": [
-      "AAPL",
-      "MSFT",
-      "GOOGL",
-      "AMZN",
-      "TSLA"
+      "GDX",
+      "NEM",
+      "GOLD",
+      "AEM",
+      "AU",
+      "KGC",
+      "CPER"
     ],
-    "interval": "1d"
+    "outputSize": "full"
   },
   "database": {
     "path": "financial_data.db",
