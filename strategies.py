@@ -120,20 +120,21 @@ class ZScoreStrategy(Strategy):
 
 
 class MACrossoverStrategy(Strategy):
-    """Trade based on moving average crossover (MA50 / MA200)"""
+    """Trade based on moving average crossover (MA20 / MA50)"""
     name = "MA Crossover"
     
     def calculate_signals(self):
         merged = self.stock_df.copy()
         
-        fast_ma = self.params.get('fast_ma', 50)
-        slow_ma = self.params.get('slow_ma', 200)
+        fast_ma = self.params.get('fast_ma', 20)
+        slow_ma = self.params.get('slow_ma', 50)
         position_size = self.params.get('position_size', 1.0)
         
         if len(merged) < slow_ma:
             return None
         
         # Calculate MAs
+        merged['ma'] = merged['close'].rolling(window=fast_ma).mean()  # For visualization
         merged['fast_ma'] = merged['close'].rolling(window=fast_ma).mean()
         merged['slow_ma'] = merged['close'].rolling(window=slow_ma).mean()
         

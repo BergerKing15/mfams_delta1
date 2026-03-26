@@ -81,10 +81,16 @@ def run_strategy(strategy_class, stock_df, fred_df, params):
     try:
         strategy = strategy_class(stock_df, fred_df, **params)
         backtest_results = strategy.calculate_signals()
-        metrics = strategy.calculate_metrics(backtest_results) if backtest_results is not None else {}
+        
+        # Check if strategy returned None (not enough data)
+        if backtest_results is None:
+            st.error(f"❌ Not enough data for {strategy_class.name}. Adjust parameters to use less data (e.g., reduce MA period).")
+            return None, {}
+        
+        metrics = strategy.calculate_metrics(backtest_results)
         return backtest_results, metrics
     except Exception as e:
-        st.error(f"Strategy execution error: {str(e)}")
+        st.error(f"❌ {strategy_class.name} strategy error:\n{str(e)}\n\nTip: Try adjusting parameters or check your data.")
         return None, {}
 
 # ============================================================================
@@ -136,11 +142,11 @@ if strategy_name == 'Z-Score (Macro Signal)':
 elif strategy_name == 'MA Crossover':
     strategy_params['fast_ma'] = st.sidebar.slider(
         "Fast MA Period",
-        min_value=5, max_value=50, value=50, step=5
+        min_value=5, max_value=50, value=20, step=5
     )
     strategy_params['slow_ma'] = st.sidebar.slider(
         "Slow MA Period",
-        min_value=50, max_value=300, value=200, step=10
+        min_value=20, max_value=100, value=50, step=10
     )
 
 elif strategy_name == 'RSI (Overbought/Oversold)':
