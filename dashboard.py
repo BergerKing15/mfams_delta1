@@ -260,14 +260,16 @@ fig_signals.add_trace(go.Scatter(
     line=dict(color='#9C27B0', width=2)
 ))
 
-# Moving average
-fig_signals.add_trace(go.Scatter(
-    x=backtest_results['date'],
-    y=backtest_results['ma'],
-    mode='lines',
-    name=f'{ma_period}-Day MA',
-    line=dict(color='#FF9800', width=2, dash='dot')
-))
+# Moving average (if it exists)
+if 'ma' in backtest_results.columns:
+    ma_label = f"MA({strategy_params.get('ma_period', 'N/A')})"
+    fig_signals.add_trace(go.Scatter(
+        x=backtest_results['date'],
+        y=backtest_results['ma'],
+        mode='lines',
+        name=ma_label,
+        line=dict(color='#FF9800', width=2, dash='dot')
+    ))
 
 # Buy signals
 buy_signals = backtest_results[backtest_results['signal'] == 1]
@@ -341,44 +343,58 @@ with col1:
     st.plotly_chart(fig_hist, use_container_width=True)
 
 with col2:
-    fig_scatter = go.Figure()
-    fig_scatter.add_trace(go.Scatter(
-        x=backtest_results['fred_zscore'],
-        y=backtest_results['returns'] * 100,
-        mode='markers',
-        marker=dict(
-            size=5,
-            color=backtest_results['returns'] * 100,
-            colorscale='RdYlGn',
-            showscale=True,
-            colorbar=dict(title="Return (%)")
-        ),
-        text=backtest_results['date'],
-        hovertemplate='<b>%{text}</b><br>FRED Z-Score: %{x:.2f}<br>Return: %{y:.2f}%'
-    ))
-    fig_scatter.update_layout(
-        title="FRED Z-Score vs Stock Returns",
-        xaxis_title="FRED Z-Score",
-        yaxis_title="Daily Return (%)",
-        height=350
-    )
-    st.plotly_chart(fig_scatter, use_container_width=True)
+    # Show FRED Z-Score scatter only if it exists (Z-Score strategy)
+    if 'fred_zscore' in backtest_results.columns:
+        fig_scatter = go.Figure()
+        fig_scatter.add_trace(go.Scatter(
+            x=backtest_results['fred_zscore'],
+            y=backtest_results['returns'] * 100,
+            mode='markers',
+            marker=dict(
+                size=5,
+                color=backtest_results['returns'] * 100,
+                colorscale='RdYlGn',
+                showscale=True,
+                colorbar=dict(title="Return (%)")
+            ),
+            text=backtest_results['date'],
+            hovertemplate='<b>%{text}</b><br>FRED Z-Score: %{x:.2f}<br>Return: %{y:.2f}%'
+        ))
+        fig_scatter.update_layout(
+            title="FRED Z-Score vs Stock Returns",
+            xaxis_title="FRED Z-Score",
+            yaxis_title="Daily Return (%)",
+            height=350
+        )
+        st.plotly_chart(fig_scatter, use_container_width=True)
+    else:
+        st.info(f"📊 FRED analysis only available for Z-Score strategy")
 
 # Data table
 st.subheader("📋 Recent Trading Activity")
 
-display_cols = ['date', 'close', 'ma', 'signal', 'fred_zscore', 'strategy_returns']
+# Build column list dynamically based on available columns
+display_cols = ['date', 'close', 'signal', 'strategy_returns']
+if 'ma' in backtest_results.columns:
+    display_cols.insert(2, 'ma')
+if 'fred_zscore' in backtest_results.columns:
+    display_cols.insert(3, 'fred_zscore')
+
+column_config = {
+    'date': st.column_config.DateColumn(format='YYYY-MM-DD'),
+    'close': st.column_config.NumberColumn(format='$%.2f'),
+    'signal': st.column_config.NumberColumn(format='%.0f'),
+    'strategy_returns': st.column_config.NumberColumn(format='%.2f%%')
+}
+if 'ma' in backtest_results.columns:
+    column_config['ma'] = st.column_config.NumberColumn(format='$%.2f')
+if 'fred_zscore' in backtest_results.columns:
+    column_config['fred_zscore'] = st.column_config.NumberColumn(format='%.2f')
+
 st.dataframe(
     backtest_results[display_cols].tail(20).assign(strategy_returns=lambda x: x['strategy_returns'] * 100),
     use_container_width=True,
-    column_config={
-        'date': st.column_config.DateColumn(format='YYYY-MM-DD'),
-        'close': st.column_config.NumberColumn(format='$%.2f'),
-        'ma': st.column_config.NumberColumn(format='$%.2f'),
-        'signal': st.column_config.NumberColumn(format='%.0f'),
-        'fred_zscore': st.column_config.NumberColumn(format='%.2f'),
-        'strategy_returns': st.column_config.NumberColumn(format='%.2f%%')
-    }
+    column_config=column_config
 )
 
 # ============================================================================
