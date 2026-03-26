@@ -492,6 +492,97 @@ if uploaded_file is not None:
     except Exception as e:
         st.error(f"❌ Error loading strategy: {str(e)}")
 
+# ============================================================================
+# ADD CUSTOM DATA
+# ============================================================================
+
+st.markdown("---")
+st.subheader("📥 Add Custom Stock or FRED Data")
+
+with st.expander("🔧 Fetch Additional Data"):
+    st.markdown("""
+    Add more stocks or FRED economic indicators to your database:
+    - **Alpha Vantage** provides ~100 days of daily stock data (free tier)
+    - **FRED** provides historical economic data back to 1948+
+    
+    Enter a symbol/series ID and fetch the latest data.
+    """)
+    
+    # Get API keys from config
+    try:
+        import json
+        config = json.load(open('config.json'))
+        fred_api_key = config['fredApi']['apiKey']
+        alpha_key = config['alphaVantage']['apiKey']
+    except:
+        fred_api_key = None
+        alpha_key = None
+        st.warning("⚠️ API keys not found in config.json")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📈 Add Stock Data")
+        stock_symbol = st.text_input(
+            "Stock Symbol",
+            placeholder="e.g., AAPL, GDX, NEM",
+            key="add_stock_symbol",
+            help="Enter stock ticker symbol"
+        ).upper()
+        
+        if st.button("📊 Fetch Stock Data", key="fetch_stock_btn"):
+            if not stock_symbol:
+                st.error("❌ Please enter a stock symbol")
+            elif not alpha_key:
+                st.error("❌ Alpha Vantage API key not configured")
+            else:
+                with st.spinner(f"Fetching {stock_symbol} data..."):
+                    from data_fetcher import DataFetcher, DatabaseManager
+                    
+                    # Fetch data
+                    df = DataFetcher.fetch_alpha_vantage_stock(alpha_key, stock_symbol)
+                    
+                    if df is not None and not df.empty:
+                        # Create table and insert data
+                        if DatabaseManager.create_stock_table("financial_data.db", stock_symbol):
+                            rows_inserted = DatabaseManager.insert_stock_data("financial_data.db", stock_symbol, df)
+                            st.success(f"✅ Added {stock_symbol}: {rows_inserted} records stored")
+                            
+                            # Clear cache to refresh symbol list
+                            st.cache_data.clear()
+                            st.rerun()
+    
+    with col2:
+        st.subheader("📊 Add FRED Series")
+        fred_series = st.text_input(
+            "FRED Series ID",
+            placeholder="e.g., UNRATE, CPIAUCSL, FEDFUNDS",
+            key="add_fred_series",
+            help="Enter FRED series ID (https://fred.stlouisfed.org/)"
+        ).upper()
+        
+        if st.button("📈 Fetch FRED Data", key="fetch_fred_btn"):
+            if not fred_series:
+                st.error("❌ Please enter a FRED series ID")
+            elif not fred_api_key:
+                st.error("❌ FRED API key not configured")
+            else:
+                with st.spinner(f"Fetching {fred_series} data..."):
+                    from data_fetcher import DataFetcher, DatabaseManager
+                    
+                    # Fetch data
+                    df = DataFetcher.fetch_fred_series(fred_api_key, fred_series)
+                    
+                    if df is not None and not df.empty:
+                        # Create table and insert data
+                        if DatabaseManager.create_fred_table("financial_data.db", fred_series):
+                            rows_inserted = DatabaseManager.insert_fred_data("financial_data.db", fred_series, df)
+                            st.success(f"✅ Added {fred_series}: {rows_inserted} records stored")
+                            
+                            # Clear cache to refresh series list
+                            st.cache_data.clear()
+                            st.rerun()
+
 # Footer
 st.markdown("---")
 st.caption("🔬 MFAMS Delta1 | Data Pipeline: FRED API + Alpha Vantage | Last Updated: March 2026")
