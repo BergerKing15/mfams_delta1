@@ -1,0 +1,17 @@
+[client]
+showErrorDetails = false
+
+[logger]
+level = "error"
+
+[telemetry]
+enabled = false
+
+[browser]
+serverAddress = "localhost"
+gatherUsageStats = false
+
+[server]
+headless = true
+port = 8501
+enableXsrfProtection = true

@@ -94,10 +94,11 @@ class BacktestEngine:
         
         # Forward-fill FRED values to match stock daily frequency
         # Extend through the end of stock data (forward fill last FRED value if needed)
-        fred_filled = self.fred_df.set_index('date').reindex(
-            pd.date_range(self.fred_df['date'].min(), self.stock_df['date'].max(), freq='D'),
-            method='ffill'
-        ).reset_index()
+        # Select only date and value columns to avoid extra DB columns (id, created_at)
+        fred_clean = self.fred_df[['date', 'value']].set_index('date')
+        fred_filled = fred_clean.reindex(
+            pd.date_range(self.fred_df['date'].min(), self.stock_df['date'].max(), freq='D')
+        ).ffill().reset_index()
         fred_filled.columns = ['date', 'value']
         
         # Merge stock with forward-filled FRED
