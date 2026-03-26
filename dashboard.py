@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 import plotly.express as px
 from scipy import stats
+from strategies import STRATEGIES
 
 # ============================================================================
 # DATA LOADING
@@ -72,104 +73,19 @@ def get_available_fred_series():
     return [t[0].replace('fred_', '') for t in tables]
 
 # ============================================================================
-# BACKTESTING LOGIC
+# STRATEGY EXECUTION
 # ============================================================================
 
-class BacktestEngine:
-    def __init__(self, stock_df, fred_df, ma_period=20, zscore_threshold=2.0, position_size=1.0):
-        self.stock_df = stock_df.copy()
-        self.fred_df = fred_df.copy()
-        self.ma_period = ma_period
-        self.zscore_threshold = zscore_threshold
-        self.position_size = position_size
-        
-    def calculate_signals(self):
-        """Generate trading signals based on Z-score"""
-        # Start with stock data (daily)
-        merged = self.stock_df.copy()
-        
-        if len(merged) < self.ma_period:
-            st.warning("Not enough data for backtesting")
-            return None
-        
-        # Forward-fill FRED values to match stock daily frequency
-        # Extend through the end of stock data (forward fill last FRED value if needed)
-        # Select only date and value columns to avoid extra DB columns (id, created_at)
-        fred_clean = self.fred_df[['date', 'value']].set_index('date')
-        fred_filled = fred_clean.reindex(
-            pd.date_range(self.fred_df['date'].min(), self.stock_df['date'].max(), freq='D')
-        ).ffill().reset_index()
-        fred_filled.columns = ['date', 'value']
-        
-        # Merge stock with forward-filled FRED
-        merged = pd.merge(merged, fred_filled, on='date', how='left')
-        merged = merged.sort_values('date').reset_index(drop=True)
-        
-        # Drop rows where we don't have FRED data (shouldn't happen with ffill, but safety check)
-        merged = merged.dropna(subset=['value']).reset_index(drop=True)
-        
-        if len(merged) < self.ma_period:
-            st.warning(f"Not enough overlapping data after merge ({len(merged)} records). Ensure stock data date range overlaps with FRED data.")
-            return None
-        
-        # Calculate moving average of close price
-        merged['ma'] = merged['close'].rolling(window=self.ma_period).mean()
-        
-        # Calculate price deviation
-        merged['deviation'] = merged['close'] - merged['ma']
-        
-        # Calculate Z-score of FRED value
-        fred_values = merged['value'].dropna()
-        if len(fred_values) > 1:
-            merged['fred_zscore'] = np.nan
-            merged.loc[fred_values.index, 'fred_zscore'] = stats.zscore(fred_values)
-        else:
-            merged['fred_zscore'] = 0
-        
-        # Trading signal: FRED high (Z > threshold) = bullish for stocks
-        merged['signal'] = 0  # 0 = no position
-        merged.loc[merged['fred_zscore'] > self.zscore_threshold, 'signal'] = 1   # Long
-        merged.loc[merged['fred_zscore'] < -self.zscore_threshold, 'signal'] = -1  # Short
-        
-        # Calculate returns
-        merged['returns'] = merged['close'].pct_change()
-        merged['strategy_returns'] = merged['signal'].shift(1) * merged['returns'] * self.position_size
-        
-        # Handle NaN values in strategy returns at the start
-        merged['strategy_returns'] = merged['strategy_returns'].fillna(0)
-        
-        return merged
-    
-    def calculate_metrics(self, backtest_df):
-        """Calculate performance metrics"""
-        if backtest_df is None or len(backtest_df) == 0:
-            return {}
-        
-        # Cumulative returns
-        backtest_df['cumulative_returns'] = (1 + backtest_df['strategy_returns']).cumprod()
-        backtest_df['buy_hold'] = (1 + backtest_df['returns']).cumprod()
-        
-        # Metrics
-        total_return = (backtest_df['cumulative_returns'].iloc[-1] - 1) * 100
-        buy_hold_return = (backtest_df['buy_hold'].iloc[-1] - 1) * 100
-        
-        sharpe = (backtest_df['strategy_returns'].mean() / backtest_df['strategy_returns'].std()) * np.sqrt(252) if backtest_df['strategy_returns'].std() > 0 else 0
-        
-        win_rate = (backtest_df[backtest_df['strategy_returns'] > 0].shape[0] / 
-                   backtest_df[backtest_df['strategy_returns'] != 0].shape[0] * 100) if backtest_df[backtest_df['strategy_returns'] != 0].shape[0] > 0 else 0
-        
-        max_dd = ((backtest_df['cumulative_returns'].cummax() - backtest_df['cumulative_returns']) / 
-                 backtest_df['cumulative_returns'].cummax()).max() * 100
-        
-        return {
-            'total_return': total_return,
-            'buy_hold_return': buy_hold_return,
-            'sharpe_ratio': sharpe,
-            'win_rate': win_rate,
-            'max_drawdown': max_dd,
-            'num_trades': (backtest_df['signal'] != backtest_df['signal'].shift(1)).sum(),
-            'final_equity': backtest_df['cumulative_returns'].iloc[-1]
-        }
+def run_strategy(strategy_class, stock_df, fred_df, params):
+    """Execute a strategy and return results"""
+    try:
+        strategy = strategy_class(stock_df, fred_df, **params)
+        backtest_results = strategy.calculate_signals()
+        metrics = strategy.calculate_metrics(backtest_results) if backtest_results is not None else {}
+        return backtest_results, metrics
+    except Exception as e:
+        st.error(f"Strategy execution error: {str(e)}")
+        return None, {}
 
 # ============================================================================
 # STREAMLIT UI
@@ -181,7 +97,7 @@ st.title("📊 MFAMS Delta1 Backtesting Dashboard")
 st.markdown("**Interactive strategy testing with macro + equity data**")
 
 # Sidebar controls
-st.sidebar.header("⚙️ Strategy Parameters")
+st.sidebar.header("⚙️ Strategy Configuration")
 
 # Data selection
 stock_options = get_available_symbols()
@@ -190,37 +106,87 @@ fred_options = get_available_fred_series()
 selected_stock = st.sidebar.selectbox("📈 Stock Symbol", stock_options, index=0)
 selected_fred = st.sidebar.selectbox("📉 FRED Indicator", fred_options, index=0)
 
-# Strategy parameters
-ma_period = st.sidebar.slider(
-    "Moving Average Period",
-    min_value=5, max_value=100, value=20, step=5,
-    help="Period for calculating moving average of stock price"
+# Strategy selection
+st.sidebar.subheader("Strategy Type")
+strategy_name = st.sidebar.selectbox(
+    "Select Strategy",
+    list(STRATEGIES.keys()),
+    help="Choose from pre-built strategies or upload custom code"
 )
+strategy_class = STRATEGIES[strategy_name]
 
-zscore_threshold = st.sidebar.slider(
-    "Z-Score Threshold",
-    min_value=0.5, max_value=5.0, value=2.0, step=0.5,
-    help="Trigger trading signal when FRED Z-score exceeds this threshold"
-)
-
-position_size = st.sidebar.slider(
+# Dynamic parameters based on strategy
+st.sidebar.subheader("Strategy Parameters")
+strategy_params = {'position_size': st.sidebar.slider(
     "Position Size",
     min_value=0.1, max_value=3.0, value=1.0, step=0.1,
-    help="Multiplier for position (1.0 = full position, 2.0 = 2x leverage)"
-)
+    help="Position multiplier (1.0 = full position, 2.0 = 2x leverage)"
+)}
+
+if strategy_name == 'Z-Score (Macro Signal)':
+    strategy_params['ma_period'] = st.sidebar.slider(
+        "Moving Average Period",
+        min_value=5, max_value=100, value=20, step=5
+    )
+    strategy_params['zscore_threshold'] = st.sidebar.slider(
+        "Z-Score Threshold",
+        min_value=0.5, max_value=5.0, value=2.0, step=0.5
+    )
+
+elif strategy_name == 'MA Crossover':
+    strategy_params['fast_ma'] = st.sidebar.slider(
+        "Fast MA Period",
+        min_value=5, max_value=50, value=50, step=5
+    )
+    strategy_params['slow_ma'] = st.sidebar.slider(
+        "Slow MA Period",
+        min_value=50, max_value=300, value=200, step=10
+    )
+
+elif strategy_name == 'RSI (Overbought/Oversold)':
+    strategy_params['rsi_period'] = st.sidebar.slider(
+        "RSI Period",
+        min_value=5, max_value=50, value=14, step=1
+    )
+    strategy_params['oversold'] = st.sidebar.slider(
+        "Oversold Threshold",
+        min_value=5, max_value=50, value=30, step=5
+    )
+    strategy_params['overbought'] = st.sidebar.slider(
+        "Overbought Threshold",
+        min_value=50, max_value=95, value=70, step=5
+    )
+
+elif strategy_name == 'Mean Reversion':
+    strategy_params['ma_period'] = st.sidebar.slider(
+        "Moving Average Period",
+        min_value=5, max_value=100, value=20, step=5
+    )
+    strategy_params['std_dev_threshold'] = st.sidebar.slider(
+        "Standard Deviation Threshold",
+        min_value=0.5, max_value=5.0, value=2.0, step=0.5
+    )
 
 # Load data
 stock_data = load_stock_data(selected_stock)
 fred_data = load_fred_data(selected_fred)
 
 if stock_data.empty or fred_data.empty:
-    st.error("No data available. Check database.")
+    st.error("❌ No data available. Check database.")
     st.stop()
 
 # Run backtest
-engine = BacktestEngine(stock_data, fred_data, ma_period, zscore_threshold, position_size)
-backtest_results = engine.calculate_signals()
-metrics = engine.calculate_metrics(backtest_results)
+backtest_results, metrics = run_strategy(strategy_class, stock_data, fred_data, strategy_params)
+
+if backtest_results is None:
+    st.error("❌ Strategy execution failed. Check parameters and data.")
+    st.stop()
+
+# Add cumulative returns columns for visualization
+if 'cumulative_returns' not in backtest_results.columns:
+    backtest_results['cumulative_returns'] = (1 + backtest_results['strategy_returns']).cumprod()
+if 'buy_hold' not in backtest_results.columns:
+    backtest_results['buy_hold'] = (1 + backtest_results['returns']).cumprod()
 
 # Display metrics in columns
 col1, col2, col3, col4 = st.columns(4)
@@ -414,6 +380,95 @@ st.dataframe(
         'strategy_returns': st.column_config.NumberColumn(format='%.2f%%')
     }
 )
+
+# ============================================================================
+# CUSTOM STRATEGY UPLOAD
+# ============================================================================
+
+st.markdown("---")
+st.subheader("🚀 Upload Custom Strategy (Advanced)")
+
+with st.expander("📖 How to Create a Custom Strategy"):
+    st.markdown("""
+    Create a Python file with your custom strategy class:
+    
+    ```python
+    from strategies import Strategy
+    import pandas as pd
+    import numpy as np
+    
+    class MyStrategy(Strategy):
+        name = "My Custom Strategy"
+        
+        def calculate_signals(self):
+            # Your implementation here
+            # Must return DataFrame with columns:
+            # - date, close, returns, signal, strategy_returns
+            
+            merged = self.stock_df.copy()
+            
+            # Access parameters: self.params['position_size'], etc.
+            position_size = self.params.get('position_size', 1.0)
+            
+            # Generate your signals...
+            merged['signal'] = 0  # Your logic here
+            
+            # Calculate returns
+            merged['returns'] = merged['close'].pct_change()
+            merged['strategy_returns'] = merged['signal'].shift(1) * merged['returns'] * position_size
+            merged['strategy_returns'] = merged['strategy_returns'].fillna(0)
+            
+            return merged
+    ```
+    
+    Save as `custom_strategy.py` and upload below.
+    """)
+
+uploaded_file = st.file_uploader("Upload custom strategy (.py)", type=['py'])
+
+if uploaded_file is not None:
+    try:
+        # Read and execute custom strategy
+        strategy_code = uploaded_file.read().decode()
+        
+        # Create namespace for execution
+        namespace = {'Strategy': Strategy, 'pd': pd, 'np': np}
+        exec(strategy_code, namespace)
+        
+        # Find custom strategy class
+        custom_class = None
+        for name, obj in namespace.items():
+            if isinstance(obj, type) and issubclass(obj, Strategy) and obj != Strategy:
+                custom_class = obj
+                break
+        
+        if custom_class:
+            st.success(f"✅ Loaded strategy: {custom_class.name}")
+            
+            # Allow user to test custom strategy
+            if st.button("📊 Test Custom Strategy"):
+                custom_params = {'position_size': st.slider(
+                    "Custom Position Size",
+                    min_value=0.1, max_value=3.0, value=1.0, step=0.1,
+                    key='custom_pos_size'
+                )}
+                
+                custom_results, custom_metrics = run_strategy(custom_class, stock_data, fred_data, custom_params)
+                
+                if custom_results is not None:
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Return", f"{custom_metrics.get('total_return', 0):.2f}%")
+                    with col2:
+                        st.metric("Sharpe Ratio", f"{custom_metrics.get('sharpe_ratio', 0):.2f}")
+                    with col3:
+                        st.metric("Max Drawdown", f"{custom_metrics.get('max_drawdown', 0):.2f}%")
+                    
+                    st.write(custom_results[['date', 'close', 'signal', 'strategy_returns']].tail(10))
+        else:
+            st.error("❌ No Strategy class found in uploaded file")
+    except Exception as e:
+        st.error(f"❌ Error loading strategy: {str(e)}")
 
 # Footer
 st.markdown("---")
