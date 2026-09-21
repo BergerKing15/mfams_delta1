@@ -88,3 +88,9 @@ up any `Strategy` subclass; `example_custom_strategy.py` is the template.
   Vantage, so `pipeline.cpp` always gets the ~100-day compact response.
 - The pipeline sleeps 12 seconds between symbols for Alpha Vantage's 5 req/min free tier, so
   a multi-symbol run is slow by design.
+- Market holidays are computed in `market_calendar.hpp`, not listed. `make test` checks them
+  against published NYSE dates including the observance edge cases. Don't reintroduce a
+  hardcoded list — the previous one expired at 2025 and fabricated bars on 2026 holidays.
+- Any signal a strategy computes must be causal. The FRED Z-score uses an expanding window
+  for this reason; a full-sample `scipy.stats.zscore` leaks future data into past signals.
+  Note that FRED series are also published with a lag that the merge does not yet model.

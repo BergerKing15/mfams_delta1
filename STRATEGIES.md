@@ -11,7 +11,9 @@ The MFAMS Delta1 dashboard supports multiple trading strategies. Choose from **4
 ### 1. **Z-Score (Macro Signal)** 
 **Best for:** Macro-based trading using economic indicators
 
-Trades based on the Z-score (standard deviation) of FRED economic indicators:
+Trades based on the Z-score (standard deviation) of FRED economic indicators. The Z-score
+uses an **expanding window**, so each day is scored only against data available up to that
+day - a full-sample Z-score would leak future information into past signals:
 - **Buy Signal:** FRED indicator Z-score > Threshold (economic conditions favor the stock)
 - **Sell Signal:** FRED indicator Z-score < -Threshold
 

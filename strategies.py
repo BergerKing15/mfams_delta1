@@ -5,7 +5,6 @@ Base class for implementing and extending trading strategies
 
 import pandas as pd
 import numpy as np
-from scipy import stats
 from abc import ABC, abstractmethod
 
 
@@ -98,13 +97,15 @@ class ZScoreStrategy(Strategy):
         merged['ma'] = merged['close'].rolling(window=ma_period).mean()
         merged['deviation'] = merged['close'] - merged['ma']
         
-        # Z-score of FRED
-        fred_values = merged['value'].dropna()
-        if len(fred_values) > 1:
-            merged['fred_zscore'] = np.nan
-            merged.loc[fred_values.index, 'fred_zscore'] = stats.zscore(fred_values)
-        else:
-            merged['fred_zscore'] = 0
+        # Z-score of FRED, computed causally.
+        # An expanding window uses only data available up to each row; a full-sample
+        # zscore() would score early rows using statistics drawn from later ones, which
+        # leaks future information into past signals.
+        zscore_min_periods = self.params.get('zscore_min_periods', 20)
+        values = merged['value']
+        mean = values.expanding(min_periods=zscore_min_periods).mean()
+        std = values.expanding(min_periods=zscore_min_periods).std()
+        merged['fred_zscore'] = ((values - mean) / std.replace(0, np.nan)).fillna(0)
         
         # Generate signals
         merged['signal'] = 0

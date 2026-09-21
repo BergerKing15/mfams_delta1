@@ -13,6 +13,7 @@
 #include <thread>
 #include <chrono>
 #include <fstream>
+#include "market_calendar.hpp"
 
 using json = nlohmann::json;
 
@@ -229,21 +230,13 @@ private:
 // ============================================================================
 
 class DataCleaner {
-private:
-    std::set<std::string> marketHolidays = {
-        // US Market holidays (add more as needed)
-        "2024-01-01", "2024-01-15", "2024-02-19", "2024-03-29", 
-        "2024-05-27", "2024-06-19", "2024-07-04", "2024-09-02",
-        "2024-11-28", "2024-12-25",
-        "2025-01-01", "2025-01-20", "2025-02-17", "2025-04-18",
-        "2025-05-26", "2025-06-19", "2025-07-04", "2025-09-01",
-        "2025-11-27", "2025-12-25"
-    };
-
 public:
-    // Check if date is a market holiday
+    // Check if date is a market holiday.
+    // Derived from the NYSE holiday rules in market_calendar.hpp rather than a
+    // hardcoded list, which would silently expire and cause the gap filler to
+    // fabricate price bars on days the market was closed.
     bool IsMarketHoliday(const std::string& dateStr) {
-        return marketHolidays.count(dateStr) > 0;
+        return MarketCalendar::IsHoliday(dateStr);
     }
 
     // Fill missing days with forward fill (last known value)

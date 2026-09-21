@@ -19,7 +19,7 @@ TARGET := $(BUILD_DIR)/financial_pipeline
 CONFIG_TARGET := $(BUILD_DIR)/config_manager
 
 # Phony targets
-.PHONY: all clean build config help
+.PHONY: all clean build config test help
 
 # Default target
 all: build
@@ -37,6 +37,7 @@ help:
 	@echo "  clean       - Remove build artifacts"
 	@echo "  rebuild     - Clean and build"
 	@echo "  run         - Build and run the pipeline"
+	@echo "  test        - Build and run the market calendar tests"
 	@echo ""
 
 # Create build directory
@@ -63,6 +64,14 @@ $(CONFIG_TARGET): $(CONFIG_OBJECTS) | $(BUILD_DIR)
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
+# Build and run the market calendar tests
+test: $(BUILD_DIR)/test_market_calendar
+	@echo "Running market calendar tests..."
+	@./$(BUILD_DIR)/test_market_calendar
+
+$(BUILD_DIR)/test_market_calendar: test_market_calendar.cpp market_calendar.hpp | $(BUILD_DIR)
+	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) test_market_calendar.cpp -o $@
+
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
@@ -77,4 +86,4 @@ run: build
 	@echo "Running pipeline..."
 	./$(TARGET)
 
-.PHONY: all build config clean rebuild run help
+.PHONY: all build config clean rebuild run test help

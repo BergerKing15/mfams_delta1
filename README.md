@@ -182,13 +182,22 @@ CREATE TABLE stock_AAPL (
 - Filters outliers per field (e.g., close price)
 
 ### 3. Market Holiday Recognition
-Current recognized holidays (2024-2025):
+Holidays are **computed** from the NYSE rules in `market_calendar.hpp`, for any year, so
+the calendar never goes stale:
 - New Year's Day, MLK Day, Presidents' Day
-- Good Friday, Memorial Day, Juneteenth
+- Good Friday (Easter-derived), Memorial Day, Juneteenth
 - Independence Day, Labor Day
 - Thanksgiving, Christmas
 
-To add more holidays, modify the `marketHolidays` set in the `DataCleaner` class.
+Observance rules are applied: a fixed-date holiday on a Saturday is observed the preceding
+Friday and on a Sunday the following Monday, except New Year's Day, which is simply not
+observed when it falls on a Saturday.
+
+Ad-hoc closures (national days of mourning, weather) can't be derived from a rule and are
+not covered. To verify the calendar:
+```bash
+make test
+```
 
 ## Architecture
 

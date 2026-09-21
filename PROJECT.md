@@ -387,7 +387,7 @@ auto stats = CalculateSummaryStats(prices);
 ### Customizing Data Cleaning
 
 Edit `DataCleaner` class:
-- Add more market holidays in `marketHolidays`
+- Market holidays are computed in `market_calendar.hpp` (`make test` verifies them)
 - Adjust `RemoveOutliers()` multiplier
 - Modify `FillMissingDays()` logic
 
