@@ -40,36 +40,36 @@ help:
 	@echo "  test        - Build and run the market calendar tests"
 	@echo ""
 
-# Create build directory
-$(BUILD_DIR):
-	@mkdir -p $(BUILD_DIR)
+# Headers that every object depends on
+HEADERS := market_calendar.hpp
 
 # Build main pipeline
 build: $(TARGET)
 
-$(TARGET): $(OBJECTS) | $(BUILD_DIR)
+$(TARGET): $(OBJECTS)
+	@mkdir -p $(@D)
 	$(CXX) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
 	@echo "✓ Build successful: $(TARGET)"
 
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp $(HEADERS)
+	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
 # Build configuration manager
 config: $(CONFIG_TARGET)
 
-$(CONFIG_TARGET): $(CONFIG_OBJECTS) | $(BUILD_DIR)
+$(CONFIG_TARGET): $(CONFIG_OBJECTS)
+	@mkdir -p $(@D)
 	$(CXX) $(CONFIG_OBJECTS) -o $(CONFIG_TARGET) $(LDFLAGS)
 	@echo "✓ Config manager built: $(CONFIG_TARGET)"
-
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
-	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
 # Build and run the market calendar tests
 test: $(BUILD_DIR)/test_market_calendar
 	@echo "Running market calendar tests..."
 	@./$(BUILD_DIR)/test_market_calendar
 
-$(BUILD_DIR)/test_market_calendar: test_market_calendar.cpp market_calendar.hpp | $(BUILD_DIR)
+$(BUILD_DIR)/test_market_calendar: test_market_calendar.cpp $(HEADERS)
+	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) test_market_calendar.cpp -o $@
 
 # Clean build artifacts
