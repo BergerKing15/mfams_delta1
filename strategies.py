@@ -59,8 +59,17 @@ class Strategy(ABC):
         pass
     
     @staticmethod
-    def calculate_metrics(backtest_df):
-        """Calculate performance metrics from backtest results"""
+    def calculate_metrics(backtest_df, risk_free_rate=0.0):
+        """Calculate performance metrics from backtest results.
+
+        risk_free_rate is an annual percentage (4.5 means 4.5%/year). Sharpe is
+        computed on returns in excess of it. Leaving it at 0 measures raw
+        volatility-adjusted return, which flatters any strategy during a period
+        when cash paid something.
+
+        The excess is subtracted on every day, including days the strategy sits
+        flat, which treats idle capital as earning nothing.
+        """
         if backtest_df is None or len(backtest_df) == 0:
             return {}
         
@@ -71,7 +80,9 @@ class Strategy(ABC):
         total_return = (backtest_df['cumulative_returns'].iloc[-1] - 1) * 100
         buy_hold_return = (backtest_df['buy_hold'].iloc[-1] - 1) * 100
 
-        sharpe = (backtest_df['strategy_returns'].mean() / backtest_df['strategy_returns'].std()) * np.sqrt(252)             if backtest_df['strategy_returns'].std() > 0 else 0
+        daily_rf = (risk_free_rate / 100.0) / 252.0
+        excess = backtest_df['strategy_returns'] - daily_rf
+        sharpe = (excess.mean() / backtest_df['strategy_returns'].std()) * np.sqrt(252)             if backtest_df['strategy_returns'].std() > 0 else 0
 
         max_dd = ((backtest_df['cumulative_returns'].cummax() - backtest_df['cumulative_returns']) /
                  backtest_df['cumulative_returns'].cummax()).max() * 100
@@ -92,6 +103,7 @@ class Strategy(ABC):
             'total_return': total_return,
             'buy_hold_return': buy_hold_return,
             'sharpe_ratio': sharpe,
+            'risk_free_rate': risk_free_rate,
             'win_rate': win_rate,
             'win_rate_days': win_rate_days,
             'max_drawdown': max_dd,

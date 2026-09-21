@@ -101,6 +101,15 @@ is shown in the metric's tooltip, and is a different (usually higher) number.
 **Causality.** Any signal must use only data available at the time. The Z-Score strategy
 uses an expanding window and lags the FRED series by its release delay for this reason.
 
+**Sharpe and the risk-free rate.** `Risk-Free Rate (annual %)` in the sidebar sets the rate
+Sharpe is measured against, defaulting to 0. A strategy that clears 0 but not the cash rate
+is not adding value; the slider's help text shows the latest FEDFUNDS figure in your
+database as a realistic setting.
+
+**What these numbers can and cannot tell you.** With ~100 trading days per symbol and no
+dividend adjustment, treat every metric as a way to compare parameter choices against each
+other, not as evidence that a strategy works. See "Known Limitations" in the README.
+
 ## Creating Custom Strategies
 
 ### Step 1: Understand the Base Class

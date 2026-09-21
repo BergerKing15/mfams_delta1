@@ -382,6 +382,28 @@ crontab -e
 - [ ] Data validation and sanity checks
 - [ ] Logging to file
 
+## Known Limitations
+
+Things the data itself cannot support, worth knowing before trusting a backtest.
+
+**No dividend adjustment.** `adj_close` is a copy of `close`. The free Alpha Vantage tier
+returns no adjusted series, so total-return effects are missing entirely. For GDX, NEM and
+the other dividend-paying names in the default config, backtests understate long returns and
+overstate short ones. Don't build dividend-aware logic on this column.
+
+**Short history.** The free tier returns roughly the last 100 trading days per symbol, about
+five months. Sharpe ratios, win rates and drawdowns are all unstable on a sample that short,
+and one trade can dominate the result. The dashboard warns when a series has under 250 days.
+Use these numbers to compare parameter choices, not as evidence that a strategy works.
+
+**Survivorship and point-in-time.** Prices come from a live API with no vintage history, so a
+delisted ticker simply returns nothing and revised FRED figures silently overwrite the
+originals. The FRED release lag models publication delay but not revisions.
+
+**Risk-free rate defaults to 0.** Sharpe measures raw volatility-adjusted return unless you
+set the sidebar's Risk-Free Rate. During any period when cash paid something, 0 flatters
+every strategy - the dashboard suggests the latest FEDFUNDS value from your database.
+
 ## API Rate Limiting
 
 **FRED API:**

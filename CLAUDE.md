@@ -76,7 +76,13 @@ Two things to keep in mind:
   renders a different control set per strategy, so a parameter may simply be absent.
 - Data is thin (Alpha Vantage returns ~100 days on the free tier), so long lookbacks
   silently produce empty backtests. Existing defaults are deliberately short for this
-  reason — MA Crossover uses 20/50, not the textbook 50/200.
+  reason — MA Crossover uses 20/50, not the textbook 50/200. The dashboard warns below 250
+  days; don't remove that warning, the metrics really are noisy at this sample size.
+- `calculate_metrics(df, risk_free_rate=0.0)` takes an annual percentage and measures Sharpe
+  on excess returns. The dashboard passes it via a `risk_free_rate` key that `run_strategy`
+  pops out of the params before constructing the strategy — strategies never see it.
+- `adj_close` is a copy of `close` (the free tier has no adjusted series), so nothing here
+  can model dividends. README's "Known Limitations" has the full list.
 - Downstream chart code in `dashboard.py` guards on column presence (`if 'ma' in df`), so
   optional indicator columns are fine to add.
 

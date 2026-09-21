@@ -80,9 +80,21 @@ def get_available_fred_series():
 # STRATEGY EXECUTION
 # ============================================================================
 
+@st.cache_data
+def get_latest_fed_funds():
+    """Latest FEDFUNDS value, as a suggested risk-free rate. None if absent."""
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT value FROM fred_FEDFUNDS ORDER BY date DESC LIMIT 1").fetchone()
+        return row[0] if row else None
+    except sqlite3.Error:
+        return None
+
 def run_strategy(strategy_class, stock_df, fred_df, params):
     """Execute a strategy and return results"""
     try:
+        params = dict(params)
+        risk_free_rate = params.pop('risk_free_rate', 0.0)
         strategy = strategy_class(stock_df, fred_df, **params)
         backtest_results = strategy.calculate_signals()
         
@@ -91,7 +103,7 @@ def run_strategy(strategy_class, stock_df, fred_df, params):
             st.error(f"❌ Not enough data for {strategy_class.name}. Adjust parameters to use less data (e.g., reduce MA period).")
             return None, {}
         
-        metrics = strategy.calculate_metrics(backtest_results)
+        metrics = strategy.calculate_metrics(backtest_results, risk_free_rate=risk_free_rate)
         return backtest_results, metrics
     except Exception as e:
         st.error(f"❌ {strategy_class.name} strategy error:\n{str(e)}\n\nTip: Try adjusting parameters or check your data.")
@@ -138,6 +150,16 @@ strategy_params['transaction_cost_bps'] = st.sidebar.slider(
     min_value=0.0, max_value=50.0, value=5.0, step=0.5,
     help="Cost charged per unit of exposure traded, in basis points. "
          "Set to 0 for frictionless results; real trading is never frictionless."
+)
+
+_fed_funds = get_latest_fed_funds()
+strategy_params['risk_free_rate'] = st.sidebar.slider(
+    "Risk-Free Rate (annual %)",
+    min_value=0.0, max_value=10.0, value=0.0, step=0.25,
+    help="Sharpe is computed on returns in excess of this rate. At 0 it measures "
+         "raw volatility-adjusted return, which flatters a strategy whenever cash "
+         "was paying something."
+         + (f" Latest FEDFUNDS in your database: {_fed_funds:.2f}%." if _fed_funds is not None else "")
 )
 
 if strategy_name == 'Z-Score (Macro Signal)':
@@ -198,6 +220,18 @@ fred_data = load_fred_data(selected_fred)
 if stock_data.empty or fred_data.empty:
     st.error("❌ No data available. Check database.")
     st.stop()
+
+# The free Alpha Vantage tier returns ~100 trading days. Sharpe, win rate and
+# drawdown are all noisy on a sample that short, so say so rather than letting
+# the numbers imply more confidence than they carry.
+if len(stock_data) < 250:
+    st.warning(
+        f"⚠️ Only {len(stock_data)} trading days of {selected_stock} data "
+        f"(~{len(stock_data) / 21:.0f} months). Metrics below are indicative, not "
+        "predictive: Sharpe and win rate are unstable on samples this short, and a "
+        "single trade can dominate the result. Treat these as a way to compare "
+        "parameter choices, not as evidence a strategy works."
+    )
 
 # Run backtest
 backtest_results, metrics = run_strategy(strategy_class, stock_data, fred_data, strategy_params)
