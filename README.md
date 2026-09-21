@@ -175,11 +175,16 @@ CREATE TABLE stock_AAPL (
 - Recognizes US market holidays (customizable list)
 - Uses forward-fill: carries previous trading day's values
 
-### 2. Outlier Detection
-- Uses Interquartile Range (IQR) method
-- Configurable multiplier (default: 1.5)
-- Removes extreme price movements
-- Filters outliers per field (e.g., close price)
+### 2. Bad-Tick Repair
+- Judged on **returns**, not price levels. An IQR filter over price levels treats
+  the newest and oldest prices in a trending series as outliers, and a genuine
+  crash as an error
+- Flags the spike-and-revert signature of a bad print: the move into a bar and
+  the move out of it are both extreme *and* point in opposite directions
+- A real one-way move (a crash that stays down) is kept
+- Flagged bars are **interpolated from their neighbours, not deleted**, and
+  marked `filled`. The whole bar is scaled by one factor so OHLC stays coherent
+- Configurable IQR multiplier (default: 1.5); see `outlier_filter.hpp`
 
 ### 3. Market Holiday Recognition
 Holidays are **computed** from the NYSE rules in `market_calendar.hpp`, for any year, so
@@ -248,16 +253,20 @@ Also `config.json`:
 }
 ```
 
-### Adjust Outlier Detection
+### Adjust Bad-Tick Sensitivity
 
-In `DataCleaner::RemoveOutliers()`:
+In `DataCleaner::RepairOutliers()`:
 ```cpp
-// Stricter (remove more outliers)
-json cleaned = cleaner.RemoveOutliers(data, "close", 1.0);
+// Stricter (repair more aggressively)
+json cleaned = cleaner.RepairOutliers(data, "close", 1.0);
 
-// More lenient (keep more data)
-json cleaned = cleaner.RemoveOutliers(data, "close", 2.0);
+// More lenient (leave more data untouched)
+json cleaned = cleaner.RepairOutliers(data, "close", 2.0);
 ```
+
+The filter is deliberately conservative: it would rather keep a bad tick than
+delete a real move, since a deleted real move is unrecoverable and biases every
+backtest that reads the data afterwards. Run `make test` to exercise it.
 
 ### Query Database
 

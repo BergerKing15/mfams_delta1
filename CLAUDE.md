@@ -90,6 +90,12 @@ up any `Strategy` subclass; `example_custom_strategy.py` is the template.
   example, and don't echo keys into logs, docs, or commit messages. Note that the keys are
   still present in git history from before the file was untracked.
 - `data_utils.hpp` is dead code — nothing includes it.
+- The two cleaning stages are independent by design: `RepairOutliers` fixes *values*
+  (in place, marking the bar `filled`), `FillMissingDays` fixes *calendar gaps*. They used
+  to interact — deleting a bar left a hole the filler papered over with the previous day's
+  price, turning a suspect bar into a flat zero-return one. Don't reintroduce deletion.
+- Outliers are judged on returns, never price levels, and only the spike-and-revert shape
+  is treated as an error. `make test` covers both headers.
 - `config.json`'s `outputSize` field is ignored: `outputsize=full` is premium-only on Alpha
   Vantage, so `pipeline.cpp` always gets the ~100-day compact response.
 - The pipeline sleeps 12 seconds between symbols for Alpha Vantage's 5 req/min free tier, so

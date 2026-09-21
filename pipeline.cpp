@@ -14,6 +14,7 @@
 #include <chrono>
 #include <fstream>
 #include "market_calendar.hpp"
+#include "outlier_filter.hpp"
 
 using json = nlohmann::json;
 
@@ -308,47 +309,57 @@ public:
         return filled;
     }
 
-    // Remove outliers using IQR method
-    json RemoveOutliers(const json& data, const std::string& field, double iqrMultiplier = 1.5) {
+    // Repair bad ticks, judged on returns rather than price levels.
+    //
+    // Flagged points are interpolated from their neighbours rather than
+    // deleted. Deleting them left a hole that FillMissingDays then papered over
+    // with the *previous* day's price, turning a suspect bar into a flat
+    // zero-return bar and making the two cleaning stages interact. Repairing in
+    // place keeps the stages independent: this one fixes values, the next one
+    // fixes calendar gaps.
+    //
+    // Repaired bars are marked with "filled" so they are distinguishable from
+    // untouched market data, the same flag FillMissingDays uses.
+    json RepairOutliers(const json& data, const std::string& field, double iqrMultiplier = 1.5) {
         if (data.empty() || !data[0].contains(field)) {
             return data;
         }
 
-        // Extract values
+        // Work in date order; the detector compares each point to its neighbours.
+        json ordered = data;
+        std::sort(ordered.begin(), ordered.end(), [](const json& a, const json& b) {
+            return a.value("date", std::string()) < b.value("date", std::string());
+        });
+
         std::vector<double> values;
-        for (const auto& point : data) {
-            if (point.contains(field) && point[field].is_number()) {
-                values.push_back(point[field].get<double>());
-            }
+        values.reserve(ordered.size());
+        for (const auto& point : ordered) {
+            values.push_back(point.contains(field) && point[field].is_number()
+                                 ? point[field].get<double>() : 0.0);
         }
 
-        if (values.size() < 4) return data;  // Need at least 4 values for IQR
+        std::vector<size_t> flagged = OutlierFilter::FlagSpikes(values, iqrMultiplier);
 
-        std::sort(values.begin(), values.end());
+        for (size_t idx : flagged) {
+            double original = values[idx];
+            double repaired = OutlierFilter::InterpolatedValue(values, idx);
+            if (original == 0.0 || repaired <= 0.0) continue;
 
-        size_t q1_idx = values.size() / 4;
-        size_t q3_idx = 3 * values.size() / 4;
-        double q1 = values[q1_idx];
-        double q3 = values[q3_idx];
-        double iqr = q3 - q1;
-
-        double lowerBound = q1 - iqrMultiplier * iqr;
-        double upperBound = q3 + iqrMultiplier * iqr;
-
-        // Filter outliers
-        json filtered = json::array();
-        for (const auto& point : data) {
-            if (point.contains(field) && point[field].is_number()) {
-                double val = point[field].get<double>();
-                if (val >= lowerBound && val <= upperBound) {
-                    filtered.push_back(point);
+            // Scale the whole bar by the same factor so open/high/low/close stay
+            // consistent with one another.
+            double scale = repaired / original;
+            for (const char* f : {"open", "high", "low", "close", "adjClose"}) {
+                if (ordered[idx].contains(f) && ordered[idx][f].is_number()) {
+                    ordered[idx][f] = ordered[idx][f].get<double>() * scale;
                 }
-            } else {
-                filtered.push_back(point);
             }
+            ordered[idx]["filled"] = true;
+
+            std::cout << "  Repaired suspect print on " << ordered[idx].value("date", "?")
+                      << ": " << original << " -> " << repaired << std::endl;
         }
 
-        return filtered;
+        return ordered;
     }
 };
 
@@ -661,9 +672,9 @@ int main() {
             if (!rawData.empty()) {
                 std::cout << "  Retrieved " << rawData.size() << " raw price points" << std::endl;
 
-                // Clean data: remove outliers
-                json cleanedData = cleaner.RemoveOutliers(rawData, "close");
-                std::cout << "  After outlier removal: " << cleanedData.size() << " points" << std::endl;
+                // Clean data: repair suspect prints (judged on returns)
+                json cleanedData = cleaner.RepairOutliers(rawData, "close");
+                std::cout << "  After outlier repair: " << cleanedData.size() << " points" << std::endl;
 
                 // Fill missing business days
                 // FillMissingDays will auto-detect date range if not provided

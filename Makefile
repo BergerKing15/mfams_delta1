@@ -37,11 +37,11 @@ help:
 	@echo "  clean       - Remove build artifacts"
 	@echo "  rebuild     - Clean and build"
 	@echo "  run         - Build and run the pipeline"
-	@echo "  test        - Build and run the market calendar tests"
+	@echo "  test        - Build and run the unit tests"
 	@echo ""
 
 # Headers that every object depends on
-HEADERS := market_calendar.hpp
+HEADERS := market_calendar.hpp outlier_filter.hpp
 
 # Build main pipeline
 build: $(TARGET)
@@ -63,14 +63,21 @@ $(CONFIG_TARGET): $(CONFIG_OBJECTS)
 	$(CXX) $(CONFIG_OBJECTS) -o $(CONFIG_TARGET) $(LDFLAGS)
 	@echo "✓ Config manager built: $(CONFIG_TARGET)"
 
-# Build and run the market calendar tests
-test: $(BUILD_DIR)/test_market_calendar
+# Build and run the unit tests
+test: $(BUILD_DIR)/test_market_calendar $(BUILD_DIR)/test_outlier_filter
 	@echo "Running market calendar tests..."
 	@./$(BUILD_DIR)/test_market_calendar
+	@echo ""
+	@echo "Running outlier filter tests..."
+	@./$(BUILD_DIR)/test_outlier_filter
 
 $(BUILD_DIR)/test_market_calendar: test_market_calendar.cpp $(HEADERS)
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) test_market_calendar.cpp -o $@
+
+$(BUILD_DIR)/test_outlier_filter: test_outlier_filter.cpp $(HEADERS)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) test_outlier_filter.cpp -o $@
 
 # Clean build artifacts
 clean:
