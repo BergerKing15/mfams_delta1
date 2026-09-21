@@ -1,11 +1,11 @@
 # Financial Data Pipeline
 
-Automatic financial data fetching, cleaning, and storage system using C++ that integrates with FRED API and Yahoo Finance.
+Automatic financial data fetching, cleaning, and storage system using C++ that integrates with FRED API and Alpha Vantage.
 
 ## Features
 
 - **FRED API Integration**: Fetch economic indicators (unemployment, inflation, interest rates, etc.)
-- **Yahoo Finance Integration**: Fetch stock price data for multiple symbols
+- **Alpha Vantage Integration**: Fetch daily stock price data for multiple symbols
 - **Data Cleaning**:
   - Automatic handling of market holidays and weekends
   - Forward-fill for missing business days
@@ -58,26 +58,34 @@ wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp -O incl
 - Create a free account and generate an API key
 - Full documentation: https://fred.stlouisfed.org/docs/api/
 
+**Alpha Vantage API Key:**
+- Visit https://www.alphavantage.co/support/#api-key
+- Request a free key (no account required)
+- Full documentation: https://www.alphavantage.co/documentation/
+
 ### 2. Configure the Pipeline
 
-Edit `config.json`:
+Copy the template and fill in your keys:
+```bash
+cp config.example.json config.json
+```
+
 ```json
 {
   "fredApi": {
-    "apiKey": "YOUR_ACTUAL_API_KEY_HERE",
+    "apiKey": "YOUR_FRED_API_KEY",
     "series": ["UNRATE", "CPIAUCSL", "DGS10", "FEDFUNDS"]
   },
-  "yahooFinance": {
-    "symbols": ["AAPL", "MSFT", "GOOGL"]
+  "alphaVantage": {
+    "apiKey": "YOUR_ALPHA_VANTAGE_API_KEY",
+    "symbols": ["GDX", "NEM", "GOLD"]
   }
 }
 ```
 
-Alternatively, update the hardcoded values in `main()` of `pipeline.cpp`:
-```cpp
-std::string fredApiKey = "YOUR_FRED_API_KEY";
-std::vector<std::string> symbols = {"AAPL", "MSFT", "GOOGL"};
-```
+`config.json` is gitignored because it holds live API keys - keep your keys out of
+`config.example.json`. Everything the pipeline needs comes from this file; nothing is
+hardcoded in `pipeline.cpp`.
 
 ### 3. Build the Project
 
@@ -97,8 +105,11 @@ g++ -std=c++17 -o financial_pipeline pipeline.cpp \
 
 ### 4. Run the Pipeline
 
+Run it from the project root - the config path is relative, so it looks for
+`./config.json` in the working directory:
+
 ```bash
-./financial_pipeline
+./build/financial_pipeline
 ```
 
 **Expected Output:**
@@ -106,21 +117,24 @@ g++ -std=c++17 -o financial_pipeline pipeline.cpp \
 === Financial Data Pipeline ===
 
 --- Fetching FRED Data ---
-Retrieved 60 FRED observations
-Successfully stored FRED data for UNRATE
+Processing UNRATE...
+  Retrieved 60 observations
+  Successfully stored FRED data for UNRATE
 
---- Fetching Yahoo Finance Data ---
-Processing AAPL...
-  Retrieved 252 raw price points
-  After outlier removal: 251 points
-  After filling missing days: 252 points
-  Successfully stored data for AAPL
+--- Fetching Stock Data from Alpha Vantage ---
+Processing GDX...
+  Retrieved 100 raw price points
+  After outlier removal: 98 points
+  After filling missing days: 100 points
+  Successfully stored data for GDX
 
 --- Verifying Stored Data ---
-Sample AAPL data (first 3 records):
-  2024-01-02: Close=$165.23
-  2024-01-03: Close=$166.45
-  2024-01-04: Close=$164.87
+FRED UNRATE: 60 records
+Stock GDX: 100 records
+Sample GDX data (first 3 records):
+  2024-01-02: Close=$28.93
+  2024-01-03: Close=$28.41
+  2024-01-04: Close=$28.77
 
 === Pipeline Complete ===
 ```
@@ -185,10 +199,10 @@ To add more holidays, modify the `marketHolidays` set in the `DataCleaner` class
 - Parses JSON responses
 - Manages authentication with API key
 
-**YahooFinanceClient**
-- Downloads stock price data via HTTP
-- Parses CSV responses
-- Handles date range conversions
+**AlphaVantageClient**
+- Downloads daily stock price data via HTTP
+- Parses the `Time Series (Daily)` JSON response
+- Surfaces API `Error Message` / `Note` / `Information` responses (rate limits, bad symbols)
 
 **DataCleaner**
 - Validates and transforms financial data
@@ -206,28 +220,22 @@ To add more holidays, modify the `marketHolidays` set in the `DataCleaner` class
 
 ### Extend with Additional Symbols
 
-Edit `main()`:
-```cpp
-std::vector<std::string> symbols = {
-    "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA",
-    "META", "NVIDIA", "JPM"
-};
+Edit `config.json` - no recompile needed:
+```json
+"alphaVantage": {
+  "symbols": ["GDX", "NEM", "GOLD", "AEM", "AU", "KGC", "CPER"]
+}
 ```
+
+Note that the pipeline sleeps 12 seconds between symbols to stay under the free-tier rate
+limit, so long symbol lists take a while.
 
 ### Fetch Additional Economic Indicators
 
-Edit `main()`:
-```cpp
-std::vector<std::string> fredSeries = {
-    "UNRATE",      // Unemployment Rate
-    "CPIAUCSL",    // Consumer Price Index
-    "DGS10",       // 10-Year Treasury Rate
-    "FEDFUNDS",    // Federal Funds Rate
-    "INDPRO"       // Industrial Production
-};
-
-for (const auto& seriesId : fredSeries) {
-    // Fetch and process each series
+Also `config.json`:
+```json
+"fredApi": {
+  "series": ["UNRATE", "CPIAUCSL", "DGS10", "FEDFUNDS", "INDPRO"]
 }
 ```
 
@@ -286,6 +294,14 @@ wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp \
 - Check internet connection
 - Confirm FRED service is up: https://fredaccount.stlouisfed.org
 
+**"API Rate Limit" or "API Information" for stock symbols**
+- The Alpha Vantage free tier allows 5 requests/minute and caps daily requests
+- Trim the `symbols` list in `config.json` and retry later
+
+**"No time series data in response"**
+- Usually an invalid ticker, or a rate-limit response in disguise
+- Verify the symbol at https://www.alphavantage.co/documentation/
+
 **"Cannot open database"**
 - Ensure write permissions in current directory
 - Check disk space availability
@@ -338,14 +354,13 @@ crontab -e
 
 ## Future Enhancements
 
-- [ ] Configuration file support (JSON/YAML parsing)
 - [ ] Scheduling module for automated execution
 - [ ] Data export to CSV/Excel
 - [ ] REST API interface
 - [ ] Performance metrics calculation
 - [ ] Multi-threading for parallel API requests
 - [ ] Pandas DataFrame export capability
-- [ ] Additional data sources (IEX Cloud, Alpha Vantage)
+- [ ] Additional data sources (IEX Cloud, Tiingo)
 - [ ] Data validation and sanity checks
 - [ ] Logging to file
 
@@ -355,9 +370,11 @@ crontab -e
 - Rate limit: 120 requests per minute
 - No API key: 10 requests per minute
 
-**Yahoo Finance:**
-- No official rate limits
-- Recommended: 1-2 second delay between requests
+**Alpha Vantage (free tier):**
+- Rate limit: 5 requests per minute, plus a daily request cap
+- The pipeline already sleeps 12 seconds between symbols to respect this
+- `outputsize=full` is premium-only, so each symbol returns roughly the last 100 trading
+  days - the `outputSize` field in `config.json` is not currently used
 
 ## License
 
@@ -367,6 +384,7 @@ MIT License - Feel free to use and modify for your needs.
 
 For issues with:
 - **FRED API**: https://fred.stlouisfed.org/docs/api
+- **Alpha Vantage**: https://www.alphavantage.co/documentation/
 - **libcurl**: https://curl.se/
 - **SQLite**: https://www.sqlite.org/docs.html
 - **nlohmann/json**: https://github.com/nlohmann/json
@@ -375,8 +393,7 @@ For issues with:
 
 To improve this pipeline:
 1. Add more data sources
-2. Implement configuration file parsing
-3. Add comprehensive logging
+2. Add comprehensive logging
 4. Implement scheduling
 5. Create unit tests
 6. Optimize database queries

@@ -1,13 +1,13 @@
 {
   "fredApi": {
-    "apiKey": "fc1d8c91793fd515c6b9a829047cde41",
+    "apiKey": "YOUR_FRED_API_KEY",
     "baseUrl": "https://api.stlouisfed.org/fred",
     "series": [
       "UNRATE", "CPIAUCSL", "FEDFUNDS"
     ]
   },
   "alphaVantage": {
-    "apiKey": "LDH5SBMS1ZZ3NW35",
+    "apiKey": "YOUR_ALPHA_VANTAGE_API_KEY",
     "symbols": [
       "GDX",
       "NEM",

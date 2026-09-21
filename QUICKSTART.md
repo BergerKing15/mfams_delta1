@@ -60,13 +60,21 @@ cd ..
 3. Go to Account Settings → API Keys
 4. Copy your 32-character API key
 
-Keep this key safe and secure!
+### Alpha Vantage API Key (Required for stock data)
+
+1. Visit: https://www.alphavantage.co/support/#api-key
+2. Request a free key - no account needed
+3. Copy the key from the confirmation page
+
+Keep both keys safe and secure. `config.json` is gitignored for this reason - never commit
+it, and never put real keys in `config.example.json`.
 
 ## Step 4: Configure the Pipeline (2 minutes)
 
-Edit `config.json`:
+Copy the template, then edit it:
 
 ```bash
+cp config.example.json config.json
 nano config.json  # or your editor of choice
 ```
 
@@ -74,11 +82,12 @@ nano config.json  # or your editor of choice
 ```json
 {
   "fredApi": {
-    "apiKey": "YOUR_API_KEY_HERE",
+    "apiKey": "YOUR_FRED_API_KEY",
     "series": ["UNRATE"]
   },
-  "yahooFinance": {
-    "symbols": ["AAPL"]
+  "alphaVantage": {
+    "apiKey": "YOUR_ALPHA_VANTAGE_API_KEY",
+    "symbols": ["GDX"]
   },
   "database": {
     "path": "financial_data.db"
@@ -94,20 +103,12 @@ nano config.json  # or your editor of choice
 ```json
 {
   "fredApi": {
-    "apiKey": "YOUR_API_KEY_HERE",
-    "series": [
-      "UNRATE",      // Unemployment Rate
-      "CPIAUCSL",    // Consumer Price Index
-      "DGS10"        // 10-Year Treasury Rate
-    ]
+    "apiKey": "YOUR_FRED_API_KEY",
+    "series": ["UNRATE", "CPIAUCSL", "DGS10"]
   },
-  "yahooFinance": {
-    "symbols": [
-      "AAPL",
-      "MSFT",
-      "GOOGL",
-      "AMZN"
-    ]
+  "alphaVantage": {
+    "apiKey": "YOUR_ALPHA_VANTAGE_API_KEY",
+    "symbols": ["GDX", "NEM", "GOLD", "AEM"]
   },
   "database": {
     "path": "financial_data.db"
@@ -121,6 +122,12 @@ nano config.json  # or your editor of choice
 }
 ```
 
+The series above are unemployment (`UNRATE`), CPI (`CPIAUCSL`) and the 10-year Treasury
+rate (`DGS10`). Keep the JSON comment-free - the parser rejects `//` comments.
+
+Each stock costs one Alpha Vantage request and the pipeline sleeps 12 seconds between
+symbols, so a four-symbol run takes about a minute.
+
 ## Step 5: Run the Pipeline
 
 ```bash
@@ -132,24 +139,30 @@ nano config.json  # or your editor of choice
 === Financial Data Pipeline ===
 
 --- Fetching FRED Data ---
-Retrieved 252 FRED observations
-Successfully stored FRED data for UNRATE
+Processing UNRATE...
+  Retrieved 252 observations
+  Successfully stored FRED data for UNRATE
 
---- Fetching Yahoo Finance Data ---
-Processing AAPL...
-  Retrieved 252 raw price points
-  After outlier removal: 251 points
-  After filling missing days: 252 points
-  Successfully stored data for AAPL
+--- Fetching Stock Data from Alpha Vantage ---
+Processing GDX...
+  Retrieved 100 raw price points
+  After outlier removal: 98 points
+  After filling missing days: 100 points
+  Successfully stored data for GDX
 
 --- Verifying Stored Data ---
-Sample AAPL data (first 3 records):
-  2023-01-03: Close=$150.93
-  2023-01-04: Close=$151.48
-  2023-01-05: Close=$152.29
+FRED UNRATE: 252 records
+Stock GDX: 100 records
+Sample GDX data (first 3 records):
+  2024-01-02: Close=$28.93
+  2024-01-03: Close=$28.41
+  2024-01-04: Close=$28.77
 
 === Pipeline Complete ===
 ```
+
+Note: the free Alpha Vantage tier returns roughly the last 100 trading days per symbol.
+The `startDate` / `endDate` settings bound the FRED fetch, not the stock fetch.
 
 ## Step 6: Query Your Data
 
@@ -158,8 +171,8 @@ Sample AAPL data (first 3 records):
 ```bash
 sqlite3 financial_data.db
 
-# View AAPL stock data
-sqlite> SELECT date, close FROM stock_AAPL 
+# View GDX stock data
+sqlite> SELECT date, close FROM stock_GDX 
         WHERE date >= '2024-06-01' 
         ORDER BY date DESC 
         LIMIT 10;
@@ -175,7 +188,7 @@ sqlite> SELECT
   MIN(close) as min_price,
   MAX(close) as max_price,
   ROUND(AVG(close), 2) as avg_price
-FROM stock_AAPL;
+FROM stock_GDX;
 ```
 
 ### Example Queries
@@ -184,8 +197,8 @@ FROM stock_AAPL;
 ```sql
 SELECT a.date, a.close,
        ROUND(AVG(b.close) OVER (ORDER BY a.date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW), 2) as ma_30
-FROM stock_AAPL a
-JOIN stock_AAPL b ON a.date >= b.date
+FROM stock_GDX a
+JOIN stock_GDX b ON a.date >= b.date
 WHERE a.date >= '2024-09-01'
 GROUP BY a.date
 ORDER BY a.date DESC;
@@ -195,7 +208,7 @@ ORDER BY a.date DESC;
 ```sql
 SELECT date, close, 
        ROUND(((close - LAG(close) OVER(ORDER BY date)) / LAG(close) OVER(ORDER BY date) * 100), 2) as pct_change
-FROM stock_AAPL
+FROM stock_GDX
 WHERE pct_change IS NOT NULL
 ORDER BY ABS(pct_change) DESC
 LIMIT 10;
@@ -246,6 +259,12 @@ mkdir -p include/nlohmann
 wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp \
     -O include/nlohmann/json.hpp
 ```
+
+### "API Rate Limit" or no stock data
+
+The Alpha Vantage free tier allows 5 requests/minute with a daily cap. The pipeline already
+waits 12 seconds between symbols; if you still hit the limit, shorten the `symbols` list in
+`config.json` and run again later.
 
 ### "FRED API Error" after build succeeds
 
@@ -311,7 +330,7 @@ crontab -e
 
 - Create database indices:
   ```sql
-  CREATE INDEX idx_stock_date ON stock_AAPL(date);
+  CREATE INDEX idx_stock_date ON stock_GDX(date);
   CREATE INDEX idx_fred_date ON fred_UNRATE(date);
   ```
 
@@ -357,7 +376,7 @@ sqlite3 financial_data.db "SELECT name FROM sqlite_master WHERE type='table';"
 ### Check Data Freshness
 ```bash
 sqlite3 financial_data.db \
-  "SELECT MAX(date) as latest_date FROM stock_AAPL;"
+  "SELECT MAX(date) as latest_date FROM stock_GDX;"
 ```
 
 ## Getting Help

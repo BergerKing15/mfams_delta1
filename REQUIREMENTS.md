@@ -123,7 +123,7 @@ sudo apt-get install -y build-essential cmake libcurl4-openssl-dev libsqlite3-de
 
 **Purpose**: HTTP client library for API requests
 - **Version**: 7.0 or later
-- **Used for**: FRED API and Yahoo Finance API requests
+- **Used for**: FRED API and Alpha Vantage API requests
 - **Size**: ~3-5 MB compiled
 
 **Installation Verification**:
@@ -354,7 +354,8 @@ docker run financial-pipeline
 ## Network Requirements
 
 - **FRED API**: 1 request per second (120/min with key)
-- **Yahoo Finance**: ~1-2 requests per second (no official limit)
+- **Alpha Vantage (free tier)**: 5 requests per minute, plus a daily cap; the pipeline
+  sleeps 12 seconds between symbols
 - **Bandwidth**: ~1-5 KB per request
 - **Typical daily usage**: ~500 KB
 

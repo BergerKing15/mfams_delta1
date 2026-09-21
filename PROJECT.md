@@ -1,6 +1,6 @@
 # Financial Data Pipeline - Project Overview
 
-Complete C++ financial data pipeline for FRED API and Yahoo Finance with automatic data cleaning and SQLite storage.
+Complete C++ financial data pipeline for FRED API and Alpha Vantage with automatic data cleaning and SQLite storage.
 
 ## 📁 Project Structure
 
@@ -28,7 +28,7 @@ delta1/
 
 **Features**:
 - FRED API client for economic indicators
-- Yahoo Finance client for stock data
+- Alpha Vantage client for daily stock data
 - Data cleaning (missing days, outliers, holidays)
 - SQLite database management
 - Automatic table creation
@@ -36,7 +36,7 @@ delta1/
 
 **Main Classes**:
 - `FREDClient`: Fetches economic data from Federal Reserve
-- `YahooFinanceClient`: Downloads stock price data
+- `AlphaVantageClient`: Downloads daily stock price data
 - `DataCleaner`: Validates and transforms financial data
 - `DatabaseManager`: Handles SQLite operations
 
@@ -102,14 +102,16 @@ auto sma = SimpleMovingAverage(prices, 20);
 
 **Sections**:
 - `fredApi`: API key and FRED series to fetch
-- `yahooFinance`: Stock symbols to track
+- `alphaVantage`: API key and stock symbols to track
 - `database`: SQLite database path and type
 - `dataProcessing`: Start/end dates, outlier removal settings
 - `scheduling`: Optional: auto-run frequency
 
 **Edit Before Running**:
-1. Add your FRED API key (get from https://fredaccount.stlouisfed.org)
-2. Configure stock symbols
+1. Copy `config.example.json` to `config.json` (the real file is gitignored - it holds keys)
+2. Add your FRED API key (https://fredaccount.stlouisfed.org) and Alpha Vantage key
+   (https://www.alphavantage.co/support/#api-key)
+3. Configure stock symbols
 3. Set date range
 4. Adjust outlier thresholds if needed
 
@@ -306,12 +308,12 @@ See [QUICKSTART.md](QUICKSTART.md) for detailed examples.
 ├─────────────────────────────────────────────────────┤
 │                                                     │
 │  ┌─── Data Fetching ──────────────────────┐       │
-│  │ FREDClient          YahooFinanceClient │       │
+│  │ FREDClient        AlphaVantageClient   │       │
 │  │  │                         │            │       │
 │  │  ├─ HTTP Requests  ──────┤            │       │
 │  │  └─ JSON Parsing   ──────┤            │       │
 │  │                           │            │       │
-│  │  API Responses (JSON/CSV)             │       │
+│  │  API Responses (JSON)                 │       │
 │  └────────────┬──────────────────────────┘       │
 │               │                                    │
 │  ┌────────────▼─────────────────────────┐       │
@@ -414,7 +416,7 @@ Edit `DataCleaner` class:
 
 **API Documentation**:
 - FRED API: https://fred.stlouisfed.org/docs/api
-- Yahoo Finance: https://finance.yahoo.com
+- Alpha Vantage: https://www.alphavantage.co/documentation/
 
 **Libraries**:
 - libcurl: https://curl.se/

@@ -1,0 +1,20 @@
+# Build artifacts
+build/
+*.o
+*.out
+financial_pipeline
+config_manager
+test_av
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local data and logs
+*.db
+*.log
+
+# Secrets — copy config.example.json to config.json and fill in your keys
+config.json

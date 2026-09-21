@@ -35,11 +35,13 @@ Classic moving average crossover strategy:
 - **Sell Signal:** Fast MA crosses below Slow MA (downtrend begins)
 
 **Adjustable Parameters:**
-- **Fast MA Period** (5-50): Short-term moving average (default 50)
-- **Slow MA Period** (50-300): Long-term moving average (default 200)
+- **Fast MA Period** (5-50): Short-term moving average (default 20)
+- **Slow MA Period** (20-100): Long-term moving average (default 50)
 - **Position Size** (0.1-3.0x): Leverage multiplier
 
-**Note:** Classic 50/200 MA crossover is a well-known technical indicator
+**Note:** The textbook version of this indicator is 50/200, but the free Alpha Vantage tier
+returns only ~100 trading days per symbol, so a 200-day slow MA leaves no data to trade on.
+The defaults are 20/50 for that reason.
 
 ---
 
