@@ -22,6 +22,31 @@ class Strategy(ABC):
         self.fred_df = fred_df.copy()
         self.params = params
     
+    def apply_returns(self, merged):
+        """Compute returns from a 'signal' column, net of transaction costs.
+
+        Every strategy should end with this rather than computing
+        strategy_returns by hand, so costs are booked consistently.
+
+        Positions are lagged one day: a signal formed on day t earns day t+1's
+        return. Cost is charged on the day exposure changes, in proportion to
+        how much it changed.
+        """
+        position_size = self.params.get('position_size', 1.0)
+        cost_bps = self.params.get('transaction_cost_bps', 0.0)
+
+        merged['returns'] = merged['close'].pct_change()
+        exposure = merged['signal'] * position_size
+        merged['gross_returns'] = (exposure.shift(1) * merged['returns']).fillna(0)
+
+        # Turnover on the first row is the cost of establishing the position.
+        turnover = exposure.diff().abs()
+        if len(turnover):
+            turnover.iloc[0] = abs(exposure.iloc[0])
+        merged['transaction_costs'] = (turnover * (cost_bps / 10000.0)).fillna(0)
+        merged['strategy_returns'] = merged['gross_returns'] - merged['transaction_costs']
+        return merged
+
     @abstractmethod
     def calculate_signals(self):
         """
@@ -45,26 +70,61 @@ class Strategy(ABC):
         
         total_return = (backtest_df['cumulative_returns'].iloc[-1] - 1) * 100
         buy_hold_return = (backtest_df['buy_hold'].iloc[-1] - 1) * 100
-        
-        sharpe = (backtest_df['strategy_returns'].mean() / backtest_df['strategy_returns'].std()) * np.sqrt(252) \
-            if backtest_df['strategy_returns'].std() > 0 else 0
-        
-        win_rate = (backtest_df[backtest_df['strategy_returns'] > 0].shape[0] / 
-                   backtest_df[backtest_df['strategy_returns'] != 0].shape[0] * 100) \
-            if backtest_df[backtest_df['strategy_returns'] != 0].shape[0] > 0 else 0
-        
-        max_dd = ((backtest_df['cumulative_returns'].cummax() - backtest_df['cumulative_returns']) / 
+
+        sharpe = (backtest_df['strategy_returns'].mean() / backtest_df['strategy_returns'].std()) * np.sqrt(252)             if backtest_df['strategy_returns'].std() > 0 else 0
+
+        max_dd = ((backtest_df['cumulative_returns'].cummax() - backtest_df['cumulative_returns']) /
                  backtest_df['cumulative_returns'].cummax()).max() * 100
-        
+
+        trades = Strategy.extract_trades(backtest_df)
+        num_trades = len(trades)
+        win_rate = (sum(1 for t in trades if t > 0) / num_trades * 100) if num_trades else 0
+
+        # Share of *days* in the market that were profitable. Reported separately
+        # because win_rate is per trade, and the two are easily confused.
+        active = backtest_df[backtest_df['strategy_returns'] != 0]
+        win_rate_days = (active[active['strategy_returns'] > 0].shape[0] /
+                         active.shape[0] * 100) if active.shape[0] > 0 else 0
+
+        total_costs = backtest_df['transaction_costs'].sum() * 100             if 'transaction_costs' in backtest_df.columns else 0.0
+
         return {
             'total_return': total_return,
             'buy_hold_return': buy_hold_return,
             'sharpe_ratio': sharpe,
             'win_rate': win_rate,
+            'win_rate_days': win_rate_days,
             'max_drawdown': max_dd,
-            'num_trades': (backtest_df['signal'] != backtest_df['signal'].shift(1)).sum(),
+            'num_trades': num_trades,
+            'total_costs': total_costs,
             'final_equity': backtest_df['cumulative_returns'].iloc[-1]
         }
+
+    @staticmethod
+    def extract_trades(backtest_df):
+        """Return each completed trade's return, as a fraction.
+
+        A trade is one unbroken stretch of non-zero exposure. Flipping straight
+        from long to short closes one trade and opens another.
+        """
+        signal = backtest_df['signal'].fillna(0)
+        returns = backtest_df['strategy_returns'].fillna(0)
+
+        trades = []
+        equity = 1.0
+        current = 0
+        for i in range(len(signal)):
+            held = signal.iloc[i - 1] if i > 0 else 0   # yesterday's exposure earns today
+            if held != current:
+                if current != 0:
+                    trades.append(equity - 1)
+                equity = 1.0
+                current = held
+            if held != 0:
+                equity *= (1 + returns.iloc[i])
+        if current != 0:
+            trades.append(equity - 1)
+        return trades
 
 
 class ZScoreStrategy(Strategy):
@@ -76,12 +136,19 @@ class ZScoreStrategy(Strategy):
         
         ma_period = self.params.get('ma_period', 20)
         zscore_threshold = self.params.get('zscore_threshold', 2.0)
-        position_size = self.params.get('position_size', 1.0)
         
+        # FRED observations are published well after the period they describe
+        # (UNRATE for March is released in early April). Shifting the dates
+        # forward by the release lag keeps the signal causal; without it the
+        # strategy trades on numbers nobody had yet.
+        fred_lag_days = self.params.get('fred_lag_days', 30)
+        lagged = self.fred_df[['date', 'value']].copy()
+        lagged['date'] = lagged['date'] + pd.Timedelta(days=fred_lag_days)
+
         # Forward-fill FRED values to daily frequency
-        fred_clean = self.fred_df[['date', 'value']].set_index('date')
+        fred_clean = lagged.set_index('date')
         fred_filled = fred_clean.reindex(
-            pd.date_range(self.fred_df['date'].min(), self.stock_df['date'].max(), freq='D')
+            pd.date_range(lagged['date'].min(), self.stock_df['date'].max(), freq='D')
         ).ffill().reset_index()
         fred_filled.columns = ['date', 'value']
         
@@ -112,10 +179,8 @@ class ZScoreStrategy(Strategy):
         merged.loc[merged['fred_zscore'] > zscore_threshold, 'signal'] = 1
         merged.loc[merged['fred_zscore'] < -zscore_threshold, 'signal'] = -1
         
-        # Calculate returns
-        merged['returns'] = merged['close'].pct_change()
-        merged['strategy_returns'] = merged['signal'].shift(1) * merged['returns'] * position_size
-        merged['strategy_returns'] = merged['strategy_returns'].fillna(0)
+        # Returns net of costs (see Strategy.apply_returns)
+        merged = self.apply_returns(merged)
         
         return merged
 
@@ -129,7 +194,6 @@ class MACrossoverStrategy(Strategy):
         
         fast_ma = self.params.get('fast_ma', 20)
         slow_ma = self.params.get('slow_ma', 50)
-        position_size = self.params.get('position_size', 1.0)
         
         if len(merged) < slow_ma:
             return None
@@ -144,10 +208,8 @@ class MACrossoverStrategy(Strategy):
         merged.loc[merged['fast_ma'] > merged['slow_ma'], 'signal'] = 1
         merged.loc[merged['fast_ma'] < merged['slow_ma'], 'signal'] = -1
         
-        # Calculate returns
-        merged['returns'] = merged['close'].pct_change()
-        merged['strategy_returns'] = merged['signal'].shift(1) * merged['returns'] * position_size
-        merged['strategy_returns'] = merged['strategy_returns'].fillna(0)
+        # Returns net of costs (see Strategy.apply_returns)
+        merged = self.apply_returns(merged)
         
         return merged
 
@@ -162,7 +224,6 @@ class RSIStrategy(Strategy):
         rsi_period = self.params.get('rsi_period', 14)
         overbought = self.params.get('overbought', 70)
         oversold = self.params.get('oversold', 30)
-        position_size = self.params.get('position_size', 1.0)
         
         if len(merged) < rsi_period:
             return None
@@ -179,10 +240,8 @@ class RSIStrategy(Strategy):
         merged.loc[merged['rsi'] > overbought, 'signal'] = -1  # Sell when overbought
         merged.loc[merged['rsi'] < oversold, 'signal'] = 1    # Buy when oversold
         
-        # Calculate returns
-        merged['returns'] = merged['close'].pct_change()
-        merged['strategy_returns'] = merged['signal'].shift(1) * merged['returns'] * position_size
-        merged['strategy_returns'] = merged['strategy_returns'].fillna(0)
+        # Returns net of costs (see Strategy.apply_returns)
+        merged = self.apply_returns(merged)
         
         return merged
 
@@ -196,7 +255,6 @@ class MeanReversionStrategy(Strategy):
         
         ma_period = self.params.get('ma_period', 20)
         std_dev_threshold = self.params.get('std_dev_threshold', 2.0)
-        position_size = self.params.get('position_size', 1.0)
         
         if len(merged) < ma_period:
             return None
@@ -213,10 +271,8 @@ class MeanReversionStrategy(Strategy):
         merged.loc[merged['price_zscore'] < -std_dev_threshold, 'signal'] = 1   # Buy
         merged.loc[merged['price_zscore'] > std_dev_threshold, 'signal'] = -1   # Sell
         
-        # Calculate returns
-        merged['returns'] = merged['close'].pct_change()
-        merged['strategy_returns'] = merged['signal'].shift(1) * merged['returns'] * position_size
-        merged['strategy_returns'] = merged['strategy_returns'].fillna(0)
+        # Returns net of costs (see Strategy.apply_returns)
+        merged = self.apply_returns(merged)
         
         return merged
 

@@ -58,11 +58,17 @@ use `INSERT OR REPLACE` on the unique `date`, so re-running the pipeline is idem
 
 Strategies live in `strategies.py`, subclass `Strategy`, and are registered in the
 `STRATEGIES` dict at the bottom of the file — add the entry or the dashboard won't see it.
-`calculate_signals()` takes `stock_df`/`fred_df` plus `self.params`, and must return a
-DataFrame with `date`, `close`, `returns`, `signal` (1/-1/0), and `strategy_returns`, or
-`None` when there isn't enough data (the dashboard turns `None` into a user-facing "adjust
-parameters" message rather than a crash). `Strategy.calculate_metrics()` derives
-`cumulative_returns`, Sharpe, win rate and drawdown from those columns.
+`calculate_signals()` takes `stock_df`/`fred_df` plus `self.params`, sets a `signal` column
+(1/-1/0), and must finish by returning `self.apply_returns(merged)` — that helper lags the
+position one day, books transaction costs from `transaction_cost_bps`, and fills in
+`returns`, `gross_returns`, `transaction_costs` and `strategy_returns`. Don't compute
+`strategy_returns` by hand; costs would silently go missing. Return `None` when there isn't
+enough data (the dashboard turns `None` into a user-facing "adjust parameters" message
+rather than a crash).
+
+`Strategy.calculate_metrics()` derives Sharpe, drawdown and per-trade statistics.
+`win_rate` is per *trade* (an unbroken stretch of exposure, via `extract_trades()`);
+`win_rate_days` is the day-level figure. Don't conflate them.
 
 Two things to keep in mind:
 

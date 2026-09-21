@@ -181,11 +181,21 @@ class DatabaseManager:
                     high REAL,
                     low REAL,
                     close REAL,
+                    adj_close REAL,
                     volume INTEGER,
+                    filled BOOLEAN DEFAULT 0,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            
+
+            # Bring tables created by older versions up to the same shape, since
+            # CREATE TABLE IF NOT EXISTS leaves an existing table untouched.
+            existing = {row[1] for row in cursor.execute(f"PRAGMA table_info({table_name})")}
+            if 'adj_close' not in existing:
+                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN adj_close REAL")
+            if 'filled' not in existing:
+                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN filled BOOLEAN DEFAULT 0")
+
             conn.commit()
             conn.close()
             return True
@@ -232,15 +242,18 @@ class DatabaseManager:
             count = 0
             
             for _, row in df.iterrows():
+                # adj_close mirrors close: the free Alpha Vantage tier returns no
+                # adjusted series, and pipeline.cpp stores it the same way.
                 cursor.execute(f"""
                     INSERT OR REPLACE INTO {table_name} 
-                    (date, open, high, low, close, volume)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    (date, open, high, low, close, adj_close, volume, filled)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
                 """, (
                     row['date'].strftime('%Y-%m-%d'),
                     row['open'],
                     row['high'],
                     row['low'],
+                    row['close'],
                     row['close'],
                     row['volume']
                 ))

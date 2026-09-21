@@ -21,12 +21,16 @@ from strategies import STRATEGIES
 
 @st.cache_resource
 def get_db_connection():
-    """Get SQLite connection"""
+    """Get SQLite connection
+
+    cache_resource shares one connection across sessions and script runs, which
+    may land on different threads, so check_same_thread must be off.
+    """
     db_path = Path("financial_data.db")
     if not db_path.exists():
         st.error("❌ Database not found. Run the C++ pipeline first!")
         st.stop()
-    return sqlite3.connect(str(db_path))
+    return sqlite3.connect(str(db_path), check_same_thread=False)
 
 @st.cache_data
 def load_fred_data(series_id):
@@ -37,8 +41,8 @@ def load_fred_data(series_id):
         df = pd.read_sql_query(f"SELECT * FROM {table_name} ORDER BY date", conn)
         df['date'] = pd.to_datetime(df['date'])
         return df
-    except:
-        st.warning(f"⚠️ Could not load {series_id}")
+    except Exception as e:
+        st.warning(f"⚠️ Could not load {series_id}: {e}")
         return pd.DataFrame()
 
 @st.cache_data
@@ -50,8 +54,8 @@ def load_stock_data(symbol):
         df = pd.read_sql_query(f"SELECT date, open, high, low, close, volume FROM {table_name} ORDER BY date", conn)
         df['date'] = pd.to_datetime(df['date'])
         return df
-    except:
-        st.warning(f"⚠️ Could not load {symbol}")
+    except Exception as e:
+        st.warning(f"⚠️ Could not load {symbol}: {e}")
         return pd.DataFrame()
 
 @st.cache_data
@@ -129,10 +133,24 @@ strategy_params = {'position_size': st.sidebar.slider(
     help="Position multiplier (1.0 = full position, 2.0 = 2x leverage)"
 )}
 
+strategy_params['transaction_cost_bps'] = st.sidebar.slider(
+    "Transaction Cost (bps)",
+    min_value=0.0, max_value=50.0, value=5.0, step=0.5,
+    help="Cost charged per unit of exposure traded, in basis points. "
+         "Set to 0 for frictionless results; real trading is never frictionless."
+)
+
 if strategy_name == 'Z-Score (Macro Signal)':
     strategy_params['ma_period'] = st.sidebar.slider(
         "Moving Average Period",
         min_value=5, max_value=100, value=20, step=5
+    )
+    strategy_params['fred_lag_days'] = st.sidebar.slider(
+        "FRED Release Lag (days)",
+        min_value=0, max_value=90, value=30, step=5,
+        help="FRED data is published weeks after the period it describes. This "
+             "delays the series so signals only use data that was public at the "
+             "time. Setting it to 0 reintroduces lookahead bias."
     )
     strategy_params['zscore_threshold'] = st.sidebar.slider(
         "Z-Score Threshold",
@@ -195,7 +213,7 @@ if 'buy_hold' not in backtest_results.columns:
     backtest_results['buy_hold'] = (1 + backtest_results['returns']).cumprod()
 
 # Display metrics in columns
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
     st.metric(
@@ -215,7 +233,10 @@ with col3:
     st.metric(
         "Win Rate",
         f"{metrics.get('win_rate', 0):.1f}%",
-        delta=f"{int(metrics.get('num_trades', 0))} trades"
+        delta=f"{int(metrics.get('num_trades', 0))} trades",
+        help="Share of completed trades that were profitable. A trade is one "
+             f"unbroken stretch of exposure. Profitable days: "
+             f"{metrics.get('win_rate_days', 0):.1f}%"
     )
 
 with col4:
@@ -223,6 +244,15 @@ with col4:
         "Max Drawdown",
         f"{metrics.get('max_drawdown', 0):.2f}%",
         delta="Peak-to-trough decline"
+    )
+
+with col5:
+    st.metric(
+        "Transaction Costs",
+        f"{metrics.get('total_costs', 0):.2f}%",
+        delta="Drag on returns",
+        delta_color="inverse",
+        help="Total cost of trading over the period, already deducted from Total Return."
     )
 
 # Charts
@@ -430,15 +460,13 @@ with st.expander("📖 How to Create a Custom Strategy"):
             merged = self.stock_df.copy()
             
             # Access parameters: self.params['position_size'], etc.
-            position_size = self.params.get('position_size', 1.0)
             
             # Generate your signals...
             merged['signal'] = 0  # Your logic here
             
-            # Calculate returns
-            merged['returns'] = merged['close'].pct_change()
-            merged['strategy_returns'] = merged['signal'].shift(1) * merged['returns'] * position_size
-            merged['strategy_returns'] = merged['strategy_returns'].fillna(0)
+            # Returns, position lag and transaction costs are handled centrally.
+            # Always finish with this instead of computing strategy_returns by hand.
+            merged = self.apply_returns(merged)
             
             return merged
     ```
@@ -511,13 +539,18 @@ with st.expander("🔧 Fetch Additional Data"):
     # Get API keys from config
     try:
         import json
-        config = json.load(open('config.json'))
+        with open('config.json') as f:
+            config = json.load(f)
         fred_api_key = config['fredApi']['apiKey']
         alpha_key = config['alphaVantage']['apiKey']
-    except:
+    except FileNotFoundError:
         fred_api_key = None
         alpha_key = None
-        st.warning("⚠️ API keys not found in config.json")
+        st.warning("⚠️ config.json not found. Copy config.example.json and add your API keys.")
+    except (KeyError, ValueError) as e:
+        fred_api_key = None
+        alpha_key = None
+        st.warning(f"⚠️ Could not read API keys from config.json: {e}")
     
     col1, col2 = st.columns(2)
     

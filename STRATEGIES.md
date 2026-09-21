@@ -20,6 +20,8 @@ day - a full-sample Z-score would leak future information into past signals:
 **Adjustable Parameters:**
 - **Moving Average Period** (5-100): Period for calculating stock price moving average
 - **Z-Score Threshold** (0.5-5.0): How many standard deviations to trigger signals
+- **FRED Release Lag** (0-90 days, default 30): How long after the observation period the
+  figure actually becomes public. Setting this to 0 reintroduces lookahead bias
 - **Position Size** (0.1-3.0x): Leverage multiplier
 
 **Best Used With:**
@@ -80,6 +82,25 @@ Trades when price deviates from its moving average:
 
 ---
 
+## Shared Mechanics
+
+These apply to every strategy, built-in or custom.
+
+**Transaction costs.** `Transaction Cost (bps)` in the sidebar charges a cost per unit of
+exposure traded, defaulting to 5 bps. `Total Return` is always net of costs; the
+`Transaction Costs` tile shows the cumulative drag. Set it to 0 for frictionless results,
+but remember that a strategy which only looks profitable at 0 bps is not profitable.
+
+**Position lag.** A signal formed on day *t* earns day *t+1*'s return. Strategies never
+trade on the same bar they compute a signal from.
+
+**Win Rate is per trade**, where a trade is one unbroken stretch of non-zero exposure;
+flipping long to short closes one trade and opens another. The share of profitable *days*
+is shown in the metric's tooltip, and is a different (usually higher) number.
+
+**Causality.** Any signal must use only data available at the time. The Z-Score strategy
+uses an expanding window and lags the FRED series by its release delay for this reason.
+
 ## Creating Custom Strategies
 
 ### Step 1: Understand the Base Class
@@ -99,17 +120,15 @@ class MyStrategy(Strategy):
         merged = self.stock_df.copy()
         
         # Access parameters
-        position_size = self.params.get('position_size', 1.0)
         custom_param = self.params.get('custom_param', 20)
         
         # Generate signals (1=long, -1=short, 0=flat)
         merged['signal'] = 0
         merged.loc[some_condition, 'signal'] = 1
         
-        # Calculate returns
-        merged['returns'] = merged['close'].pct_change()
-        merged['strategy_returns'] = merged['signal'].shift(1) * merged['returns'] * position_size
-        merged['strategy_returns'] = merged['strategy_returns'].fillna(0)
+        # Returns, position lag and transaction costs are handled centrally.
+        # Always finish with this instead of computing strategy_returns by hand.
+        merged = self.apply_returns(merged)
         
         return merged
 ```
@@ -134,16 +153,21 @@ Create a `signal` column with values:
 - `-1` = **Short position** (bearish)
 - `0` = **No position** (flat)
 
-The shift(1) before calculation means the signal executes on the next day.
+You only set `signal`. The one-day execution lag is applied for you, so a signal on day
+*t* earns day *t+1*'s return.
 
-### Step 4: Calculate Returns
+### Step 4: Finish with apply_returns()
 
 ```python
-merged['returns'] = merged['close'].pct_change()  # Daily price changes
-merged['strategy_returns'] = merged['signal'].shift(1) * merged['returns'] * position_size
+return self.apply_returns(merged)
 ```
 
-Return the complete DataFrame with at minimum:
+This fills in `returns`, `gross_returns`, `transaction_costs` and `strategy_returns`,
+applying the position lag, the `position_size` multiplier and the transaction cost from the
+sidebar. Computing `strategy_returns` yourself means your backtest silently ignores costs
+and will look better than it is.
+
+The returned DataFrame then has, at minimum:
 - `date, close, returns, signal, strategy_returns`
 
 ### Step 5: Upload to Dashboard
@@ -172,7 +196,6 @@ class BollingerBandsStrategy(Strategy):
         # Parameters
         ma_period = self.params.get('ma_period', 20)
         num_std = self.params.get('num_std', 2.0)
-        position_size = self.params.get('position_size', 1.0)
         
         # Calculate bands
         merged['ma'] = merged['close'].rolling(window=ma_period).mean()
@@ -185,12 +208,8 @@ class BollingerBandsStrategy(Strategy):
         merged.loc[merged['close'] < merged['lower'], 'signal'] = 1   # Buy
         merged.loc[merged['close'] > merged['upper'], 'signal'] = -1  # Sell
         
-        # Returns
-        merged['returns'] = merged['close'].pct_change()
-        merged['strategy_returns'] = merged['signal'].shift(1) * merged['returns'] * position_size
-        merged['strategy_returns'] = merged['strategy_returns'].fillna(0)
-        
-        return merged
+        # Returns, position lag and transaction costs
+        return self.apply_returns(merged)
 ```
 
 ---
