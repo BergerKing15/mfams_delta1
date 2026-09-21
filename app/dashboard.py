@@ -4,11 +4,26 @@ MFAMS Delta1 Backtesting Dashboard
 Interactive Streamlit app for testing trading strategies with macro + equity data
 """
 
+import sys
+from pathlib import Path
+
+# Paths are anchored to the repo root rather than the working directory, so the
+# app behaves the same however it is launched.
+APP_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = APP_DIR.parent
+DB_PATH = PROJECT_ROOT / "data" / "financial_data.db"
+CONFIG_PATH = PROJECT_ROOT / "config.json"
+
+# `streamlit run` happens to put the script's directory on sys.path, but nothing
+# else does - not AppTest, not `python app/dashboard.py`. Make the sibling
+# imports work regardless.
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import sqlite3
-from pathlib import Path
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 import plotly.express as px
@@ -26,11 +41,10 @@ def get_db_connection():
     cache_resource shares one connection across sessions and script runs, which
     may land on different threads, so check_same_thread must be off.
     """
-    db_path = Path("financial_data.db")
-    if not db_path.exists():
-        st.error("❌ Database not found. Run the C++ pipeline first!")
+    if not DB_PATH.exists():
+        st.error(f"❌ Database not found at {DB_PATH}. Run the C++ pipeline first!")
         st.stop()
-    return sqlite3.connect(str(db_path), check_same_thread=False)
+    return sqlite3.connect(str(DB_PATH), check_same_thread=False)
 
 @st.cache_data
 def load_fred_data(series_id):
@@ -573,7 +587,7 @@ with st.expander("🔧 Fetch Additional Data"):
     # Get API keys from config
     try:
         import json
-        with open('config.json') as f:
+        with open(CONFIG_PATH) as f:
             config = json.load(f)
         fred_api_key = config['fredApi']['apiKey']
         alpha_key = config['alphaVantage']['apiKey']
@@ -611,8 +625,8 @@ with st.expander("🔧 Fetch Additional Data"):
                     
                     if df is not None and not df.empty:
                         # Create table and insert data
-                        if DatabaseManager.create_stock_table("financial_data.db", stock_symbol):
-                            rows_inserted = DatabaseManager.insert_stock_data("financial_data.db", stock_symbol, df)
+                        if DatabaseManager.create_stock_table(str(DB_PATH), stock_symbol):
+                            rows_inserted = DatabaseManager.insert_stock_data(str(DB_PATH), stock_symbol, df)
                             st.success(f"✅ Added {stock_symbol}: {rows_inserted} records stored")
                             
                             # Clear cache to refresh symbol list
@@ -642,8 +656,8 @@ with st.expander("🔧 Fetch Additional Data"):
                     
                     if df is not None and not df.empty:
                         # Create table and insert data
-                        if DatabaseManager.create_fred_table("financial_data.db", fred_series):
-                            rows_inserted = DatabaseManager.insert_fred_data("financial_data.db", fred_series, df)
+                        if DatabaseManager.create_fred_table(str(DB_PATH), fred_series):
+                            rows_inserted = DatabaseManager.insert_fred_data(str(DB_PATH), fred_series, df)
                             st.success(f"✅ Added {fred_series}: {rows_inserted} records stored")
                             
                             # Clear cache to refresh series list

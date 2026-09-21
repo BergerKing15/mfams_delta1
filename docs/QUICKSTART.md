@@ -90,7 +90,7 @@ nano config.json  # or your editor of choice
     "symbols": ["GDX"]
   },
   "database": {
-    "path": "financial_data.db"
+    "path": "data/financial_data.db"
   },
   "dataProcessing": {
     "startDate": "2024-01-01",
@@ -111,7 +111,7 @@ nano config.json  # or your editor of choice
     "symbols": ["GDX", "NEM", "GOLD", "AEM"]
   },
   "database": {
-    "path": "financial_data.db"
+    "path": "data/financial_data.db"
   },
   "dataProcessing": {
     "startDate": "2023-01-01",
@@ -169,7 +169,7 @@ The `startDate` / `endDate` settings bound the FRED fetch, not the stock fetch.
 ### Using SQLite CLI
 
 ```bash
-sqlite3 financial_data.db
+sqlite3 data/financial_data.db
 
 # View GDX stock data
 sqlite> SELECT date, close FROM stock_GDX 
@@ -255,9 +255,9 @@ brew install sqlite3
 
 Or manually:
 ```bash
-mkdir -p include/nlohmann
+mkdir -p third_party/nlohmann
 wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp \
-    -O include/nlohmann/json.hpp
+    -O third_party/nlohmann/json.hpp
 ```
 
 ### "API Rate Limit" or no stock data
@@ -288,8 +288,8 @@ waits 12 seconds between symbols; if you still hit the limit, shorten the `symbo
 
 Make sure you have write permissions in the current directory:
 ```bash
-ls -la | grep financial_data.db
-chmod 644 financial_data.db  # if needed
+ls -la | grep data/financial_data.db
+chmod 644 data/financial_data.db  # if needed
 ```
 
 Or specify a different path in `config.json`:
@@ -360,22 +360,22 @@ python3 -m json.tool config.json
 ### Database Backup
 ```bash
 # Backup daily
-cp financial_data.db financial_data_$(date +%Y%m%d).db
+cp data/financial_data.db financial_data_$(date +%Y%m%d).db
 
 # Backup with compression
-tar czf financial_data_$(date +%Y%m%d).tar.gz financial_data.db
+tar czf financial_data_$(date +%Y%m%d).tar.gz data/financial_data.db
 ```
 
 ### Monitor Disk Usage
 ```bash
-du -h financial_data.db
-sqlite3 financial_data.db ".tables"
-sqlite3 financial_data.db "SELECT name FROM sqlite_master WHERE type='table';"
+du -h data/financial_data.db
+sqlite3 data/financial_data.db ".tables"
+sqlite3 data/financial_data.db "SELECT name FROM sqlite_master WHERE type='table';"
 ```
 
 ### Check Data Freshness
 ```bash
-sqlite3 financial_data.db \
+sqlite3 data/financial_data.db \
   "SELECT MAX(date) as latest_date FROM stock_GDX;"
 ```
 

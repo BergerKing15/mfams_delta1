@@ -13,6 +13,21 @@ Automatic financial data fetching, cleaning, and storage system using C++ that i
 - **SQLite Database Storage**: Persistent data storage with automatic table creation
 - **Modular Architecture**: Easily extensible for additional data sources
 
+## Repository Layout
+
+```
+src/                C++ pipeline sources
+  include/          project headers (market calendar, outlier filter)
+app/                Streamlit dashboard and strategy library
+tests/              C++ unit tests  (make test)
+tools/              standalone API probe, not part of the build
+third_party/        vendored nlohmann/json
+data/               SQLite database and logs (gitignored)
+docs/               QUICKSTART, DASHBOARD, STRATEGIES, PROJECT, REQUIREMENTS
+```
+
+Run all commands from the repository root.
+
 ## Requirements
 
 ### System Dependencies
@@ -46,7 +61,7 @@ The project requires:
 To download nlohmann/json:
 ```bash
 mkdir -p include
-wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp -O include/nlohmann/json.hpp
+wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp -O third_party/nlohmann/json.hpp
 ```
 
 ## Getting Started
@@ -85,7 +100,7 @@ cp config.example.json config.json
 
 `config.json` is gitignored because it holds live API keys - keep your keys out of
 `config.example.json`. Everything the pipeline needs comes from this file; nothing is
-hardcoded in `pipeline.cpp`.
+hardcoded in `src/pipeline.cpp`.
 
 ### 3. Build the Project
 
@@ -99,7 +114,7 @@ make
 
 **Direct Compilation:**
 ```bash
-g++ -std=c++17 -o financial_pipeline pipeline.cpp \
+g++ -std=c++17 -o financial_pipeline src/pipeline.cpp \
     -lcurl -lsqlite3 -I./include
 ```
 
@@ -184,10 +199,10 @@ CREATE TABLE stock_AAPL (
 - A real one-way move (a crash that stays down) is kept
 - Flagged bars are **interpolated from their neighbours, not deleted**, and
   marked `filled`. The whole bar is scaled by one factor so OHLC stays coherent
-- Configurable IQR multiplier (default: 1.5); see `outlier_filter.hpp`
+- Configurable IQR multiplier (default: 1.5); see `src/include/outlier_filter.hpp`
 
 ### 3. Market Holiday Recognition
-Holidays are **computed** from the NYSE rules in `market_calendar.hpp`, for any year, so
+Holidays are **computed** from the NYSE rules in `src/include/market_calendar.hpp`, for any year, so
 the calendar never goes stale:
 - New Year's Day, MLK Day, Presidents' Day
 - Good Friday (Easter-derived), Memorial Day, Juneteenth
@@ -271,7 +286,7 @@ backtest that reads the data afterwards. Run `make test` to exercise it.
 ### Query Database
 
 ```bash
-sqlite3 financial_data.db
+sqlite3 data/financial_data.db
 sqlite> SELECT * FROM stock_AAPL WHERE date >= '2024-06-01' LIMIT 5;
 sqlite> SELECT date, value FROM fred_UNRATE ORDER BY date DESC;
 ```
@@ -302,7 +317,7 @@ brew install sqlite3
 ```bash
 mkdir -p include
 wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp \
-    -O include/nlohmann/json.hpp
+    -O third_party/nlohmann/json.hpp
 ```
 
 ### Runtime Errors

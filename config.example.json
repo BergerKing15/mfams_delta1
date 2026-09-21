@@ -3,7 +3,9 @@
     "apiKey": "YOUR_FRED_API_KEY",
     "baseUrl": "https://api.stlouisfed.org/fred",
     "series": [
-      "UNRATE", "CPIAUCSL", "FEDFUNDS"
+      "UNRATE",
+      "CPIAUCSL",
+      "FEDFUNDS"
     ]
   },
   "alphaVantage": {
@@ -20,7 +22,7 @@
     "outputSize": "full"
   },
   "database": {
-    "path": "financial_data.db",
+    "path": "data/financial_data.db",
     "type": "sqlite"
   },
   "dataProcessing": {

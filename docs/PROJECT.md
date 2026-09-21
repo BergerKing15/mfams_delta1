@@ -6,9 +6,9 @@ Complete C++ financial data pipeline for FRED API and Alpha Vantage with automat
 
 ```
 delta1/
-├── pipeline.cpp              # Main pipeline application
-├── config_manager.cpp        # Configuration file parser (utility)
-├── data_utils.hpp           # Data processing utilities (header-only)
+├── src/pipeline.cpp              # Main pipeline application
+├── src/config_manager.cpp        # Configuration file parser (utility)
+├── src/include/data_utils.hpp           # Data processing utilities (header-only)
 ├── config.json              # Configuration template
 ├── CMakeLists.txt           # CMake build configuration
 ├── Makefile                 # Alternative Make build
@@ -23,7 +23,7 @@ delta1/
 
 ### Core Application Files
 
-#### `pipeline.cpp` (Main Application)
+#### `src/pipeline.cpp` (Main Application)
 **Purpose**: Main financial data pipeline executable
 
 **Features**:
@@ -49,7 +49,7 @@ delta1/
 
 ---
 
-#### `config_manager.cpp` (Configuration Utility)
+#### `src/config_manager.cpp` (Configuration Utility)
 **Purpose**: Standalone configuration file parser
 
 **Features**:
@@ -68,11 +68,11 @@ delta1/
 ./build/config_manager
 ```
 
-**Can be integrated into pipeline.cpp for production use**
+**Can be integrated into src/pipeline.cpp for production use**
 
 ---
 
-#### `data_utils.hpp` (Utility Library)
+#### `src/include/data_utils.hpp` (Utility Library)
 **Purpose**: Header-only library with financial data processing utilities
 
 **Functions**:
@@ -84,7 +84,7 @@ delta1/
 
 **Example Usage**:
 ```cpp
-#include "data_utils.hpp"
+#include "src/include/data_utils.hpp"
 using namespace DataUtils;
 
 std::vector<double> prices = {100, 105, 103, ...};
@@ -265,9 +265,9 @@ chmod +x build.sh
 
 Or manual setup:
 ```bash
-mkdir -p include/nlohmann
+mkdir -p third_party/nlohmann
 wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp \
-    -O include/nlohmann/json.hpp
+    -O third_party/nlohmann/json.hpp
 
 mkdir build && cd build
 cmake ..
@@ -291,7 +291,7 @@ cd ..
 
 ### 5. Query Data
 ```bash
-sqlite3 financial_data.db
+sqlite3 data/financial_data.db
 sqlite> SELECT * FROM stock_AAPL LIMIT 5;
 sqlite> SELECT * FROM fred_UNRATE ORDER BY date DESC LIMIT 5;
 ```
@@ -335,7 +335,7 @@ See [QUICKSTART.md](QUICKSTART.md) for detailed examples.
 │               │                                   │
 │  ┌────────────▼─────────────────────────┐       │
 │  │   Local Database                      │        │
-│  │  financial_data.db (SQLite)          │        │
+│  │  data/financial_data.db (SQLite)          │        │
 │  │  ├─ stock_AAPL                       │        │
 │  │  ├─ stock_MSFT                       │        │
 │  │  ├─ fred_UNRATE                      │        │
@@ -351,7 +351,7 @@ See [QUICKSTART.md](QUICKSTART.md) for detailed examples.
 
 ### Adding a New Data Source
 
-1. **Create a new Client class** in `pipeline.cpp`:
+1. **Create a new Client class** in `src/pipeline.cpp`:
 ```cpp
 class MyDataClient {
 private:
@@ -373,9 +373,9 @@ dbManager.InsertData("table_name", cleaned);
 
 ### Adding Financial Indicators
 
-Use `data_utils.hpp`:
+Use `src/include/data_utils.hpp`:
 ```cpp
-#include "data_utils.hpp"
+#include "src/include/data_utils.hpp"
 using namespace DataUtils;
 
 auto prices = ExtractColumn(data, "close");
@@ -387,7 +387,7 @@ auto stats = CalculateSummaryStats(prices);
 ### Customizing Data Cleaning
 
 Edit `DataCleaner` class:
-- Market holidays are computed in `market_calendar.hpp` (`make test` verifies them)
+- Market holidays are computed in `src/include/market_calendar.hpp` (`make test` verifies them)
 - Adjust `RemoveOutliers()` multiplier
 - Modify `FillMissingDays()` logic
 
@@ -437,9 +437,9 @@ Edit `DataCleaner` class:
 - [ ] Get FRED API key from https://fredaccount.stlouisfed.org
 - [ ] Edit `config.json` with API key and preferences
 - [ ] Execute `./build/financial_pipeline`
-- [ ] Query database with `sqlite3 financial_data.db`
+- [ ] Query database with `sqlite3 data/financial_data.db`
 - [ ] Schedule with cron or Task Scheduler (optional)
-- [ ] Review `data_utils.hpp` for advanced analysis capabilities
+- [ ] Review `src/include/data_utils.hpp` for advanced analysis capabilities
 
 ---
 

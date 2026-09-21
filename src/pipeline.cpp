@@ -13,6 +13,7 @@
 #include <thread>
 #include <chrono>
 #include <fstream>
+#include <filesystem>
 #include "market_calendar.hpp"
 #include "outlier_filter.hpp"
 
@@ -373,6 +374,19 @@ private:
 
 public:
     DatabaseManager(const std::string& dbPath) {
+        // The configured path may point into a directory that does not exist yet
+        // (data/ is gitignored, so a fresh clone has no such folder). sqlite3_open
+        // will not create it.
+        std::filesystem::path parent = std::filesystem::path(dbPath).parent_path();
+        if (!parent.empty()) {
+            std::error_code ec;
+            std::filesystem::create_directories(parent, ec);
+            if (ec) {
+                std::cerr << "Could not create database directory " << parent
+                          << ": " << ec.message() << std::endl;
+            }
+        }
+
         int rc = sqlite3_open(dbPath.c_str(), &db);
         if (rc != SQLITE_OK) {
             std::cerr << "Cannot open database: " << sqlite3_errmsg(db) << std::endl;

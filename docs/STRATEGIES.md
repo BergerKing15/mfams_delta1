@@ -250,9 +250,9 @@ Use these metrics to evaluate strategy quality.
 ## File Structure
 
 ```
-dashboard.py              # Main Streamlit app
-strategies.py             # Base Strategy class + built-in strategies
-example_custom_strategy.py # Example custom strategy template
+app/dashboard.py              # Main Streamlit app
+app/strategies.py             # Base Strategy class + built-in strategies
+app/example_custom_strategy.py # Example custom strategy template
 custom_strategy.py        # Upload your custom strategy here
 ```
 
@@ -277,7 +277,7 @@ custom_strategy.py        # Upload your custom strategy here
 
 ## Next Steps
 
-- Try modifying `example_custom_strategy.py` strategies
+- Try modifying `app/example_custom_strategy.py` strategies
 - Create your own strategy combining technical + macro indicators
 - Compare different parameter combinations
 - Download results for further analysis

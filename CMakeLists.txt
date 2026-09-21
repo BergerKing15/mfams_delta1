@@ -9,19 +9,15 @@ find_package(CURL REQUIRED)
 find_package(SQLite3 REQUIRED)
 
 # Include directories
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+#   src/include  - project headers (market calendar, outlier filter)
+#   third_party  - vendored nlohmann/json
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 include_directories(${CURL_INCLUDE_DIRS})
 include_directories(${SQLite3_INCLUDE_DIRS})
 
-# Add nlohmann/json header-only library (download from https://github.com/nlohmann/json)
-# If you have it installed system-wide, uncomment the find_package line below
-# find_package(nlohmann_json REQUIRED)
-
-# You can also add it as a subdirectory if it's in your project
-# add_subdirectory(nlohmann_json)
-
 # Main executable
-add_executable(financial_pipeline pipeline.cpp)
+add_executable(financial_pipeline src/pipeline.cpp)
 
 # Link libraries
 target_link_libraries(financial_pipeline 
@@ -36,6 +32,13 @@ if(MSVC)
 else()
     target_compile_options(financial_pipeline PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+
+# Unit tests (header-only, no external deps)
+enable_testing()
+foreach(test_name test_market_calendar test_outlier_filter)
+    add_executable(${test_name} tests/${test_name}.cpp)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endforeach()
 
 # Installation target (optional)
 install(TARGETS financial_pipeline DESTINATION bin)

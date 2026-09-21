@@ -11,7 +11,7 @@ pip install -r requirements.txt
 
 ### 2. Run the Dashboard
 ```bash
-streamlit run dashboard.py
+streamlit run app/dashboard.py
 ```
 
 This will start the app at **http://localhost:8501**
@@ -68,7 +68,7 @@ This will start the app at **http://localhost:8501**
 ## 🔧 Customization
 
 ### Add New Markets
-Edit `pipeline.cpp` to fetch additional stocks:
+Edit `src/pipeline.cpp` to fetch additional stocks:
 ```cpp
 std::vector<std::string> stocks = {"GDX", "YOUR_NEW_SYMBOL", ...};
 ```
@@ -80,7 +80,7 @@ Update `config.json`:
 ```
 
 ### Modify Strategy
-Edit `BacktestEngine.calculate_signals()` in `dashboard.py`:
+Edit `BacktestEngine.calculate_signals()` in `app/dashboard.py`:
 - Change signal generation logic
 - Add multiple indicators
 - Implement stop-loss/take-profit

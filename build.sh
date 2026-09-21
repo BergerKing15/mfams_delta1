@@ -50,11 +50,11 @@ install_dependencies() {
 setup_json_library() {
     echo "Setting up nlohmann/json library..."
     
-    if [ ! -f "include/nlohmann/json.hpp" ]; then
-        mkdir -p include/nlohmann
+    if [ ! -f "third_party/nlohmann/json.hpp" ]; then
+        mkdir -p third_party/nlohmann
         echo "Downloading json.hpp from GitHub..."
         wget -q https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp \
-            -O include/nlohmann/json.hpp
+            -O third_party/nlohmann/json.hpp
         echo "JSON library downloaded successfully"
     else
         echo "JSON library already exists"
@@ -100,8 +100,8 @@ setup_configuration() {
     echo "=========================================="
     
     if [ ! -f "config.json" ]; then
-        echo "config.json not found. Creating template..."
-        # Template creation is handled elsewhere
+        echo "config.json not found. Copying from config.example.json..."
+        cp config.example.json config.json
     fi
     
     echo ""
@@ -260,5 +260,6 @@ echo "=========================================="
 echo ""
 echo "Next steps:"
 echo "  1. Edit config.json with your API keys and settings"
-echo "  2. Run: ./build/financial_pipeline"
+echo "  2. Run: ./build/financial_pipeline     (from the repo root)"
+echo "  3. Run: streamlit run app/dashboard.py (the backtesting dashboard)"
 echo ""

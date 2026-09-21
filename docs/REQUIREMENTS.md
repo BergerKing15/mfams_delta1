@@ -175,9 +175,9 @@ brew install curl-ca-bundle
 sudo apt-get install nlohmann-json3-dev  # Linux
 
 # Or manual
-mkdir -p include/nlohmann
+mkdir -p third_party/nlohmann
 wget https://github.com/nlohmann/json/releases/download/v3.11.2/json.hpp \
-    -O include/nlohmann/json.hpp
+    -O third_party/nlohmann/json.hpp
 ```
 
 ## Python Dependencies (Optional)
