@@ -6,17 +6,28 @@ Complete C++ financial data pipeline for FRED API and Alpha Vantage with automat
 
 ```
 delta1/
-├── src/pipeline.cpp              # Main pipeline application
-├── src/config_manager.cpp        # Configuration file parser (utility)
-├── src/include/data_utils.hpp           # Data processing utilities (header-only)
-├── config.json              # Configuration template
-├── CMakeLists.txt           # CMake build configuration
-├── Makefile                 # Alternative Make build
-├── build.sh                 # Automated setup and build script
-├── README.md                # Comprehensive documentation
-├── QUICKSTART.md            # Quick start guide
-├── REQUIREMENTS.md          # System requirements and dependencies
-└── PROJECT.md               # This file
+├── src/
+│   ├── pipeline.cpp                  # Main pipeline application
+│   ├── config_manager.cpp            # Configuration file parser (utility)
+│   └── include/
+│       ├── market_calendar.hpp       # NYSE holiday calendar (computed)
+│       └── outlier_filter.hpp        # Bad-tick detection on returns
+├── app/
+│   ├── dashboard.py                  # Streamlit backtesting dashboard
+│   ├── strategies.py                 # Strategy base class and built-ins
+│   ├── data_fetcher.py               # Python fetch/store (no C++ needed)
+│   └── example_custom_strategy.py    # Template for custom strategies
+├── tests/                            # C++ unit tests (make test)
+├── tools/                            # Standalone API probe
+├── third_party/nlohmann/             # Vendored JSON library
+├── data/                             # SQLite database and logs (gitignored)
+├── docs/                             # This file and the other guides
+├── config.example.json               # Configuration template
+├── CMakeLists.txt                    # CMake build configuration
+├── Makefile                          # Alternative Make build
+├── build.sh                          # Automated setup and build script
+├── README.md                         # Comprehensive documentation
+└── CLAUDE.md                         # Notes for AI coding agents
 ```
 
 ## 📋 File Descriptions
@@ -72,26 +83,16 @@ delta1/
 
 ---
 
-#### `src/include/data_utils.hpp` (Utility Library)
-**Purpose**: Header-only library with financial data processing utilities
+#### `src/include/market_calendar.hpp` and `src/include/outlier_filter.hpp`
+**Purpose**: Header-only, dependency-free modules used by the pipeline and covered
+by the unit tests in `tests/`
 
-**Functions**:
-- **Statistical**: Mean, StdDev, Median, Percentile, Correlation
-- **Time Series**: SMA, EMA, Returns calculation
-- **Validation**: Data point validation, gap detection
-- **Extraction**: Column/date extraction from JSON
-- **Reports**: Summary statistics generator
+- **market_calendar.hpp**: computes NYSE closures for any year from the published
+  rules, including observance shifts, rather than a list that expires
+- **outlier_filter.hpp**: flags bad ticks by the spike-and-revert signature in
+  *returns*, leaving genuine one-way moves intact
 
-**Example Usage**:
-```cpp
-#include "src/include/data_utils.hpp"
-using namespace DataUtils;
-
-std::vector<double> prices = {100, 105, 103, ...};
-double mean = Mean(prices);
-double stddev = StdDev(prices);
-auto sma = SimpleMovingAverage(prices, 20);
-```
+Run `make test` to exercise both.
 
 ---
 
@@ -367,22 +368,15 @@ public:
 ```cpp
 MyDataClient client;
 json data = client.FetchData(...);
-json cleaned = cleaner.RemoveOutliers(data, "field");
+json cleaned = cleaner.RepairOutliers(data, "field");
 dbManager.InsertData("table_name", cleaned);
 ```
 
 ### Adding Financial Indicators
 
-Use `src/include/data_utils.hpp`:
-```cpp
-#include "src/include/data_utils.hpp"
-using namespace DataUtils;
-
-auto prices = ExtractColumn(data, "close");
-auto sma20 = SimpleMovingAverage(prices, 20);
-auto ema50 = ExponentialMovingAverage(prices, 50);
-auto stats = CalculateSummaryStats(prices);
-```
+Indicators belong on the Python side, where the backtesting happens. Add them in a
+`Strategy` subclass in `app/strategies.py` - see `docs/STRATEGIES.md`. The C++ half
+is deliberately limited to fetching, cleaning and storing.
 
 ### Customizing Data Cleaning
 
@@ -439,7 +433,6 @@ Edit `DataCleaner` class:
 - [ ] Execute `./build/financial_pipeline`
 - [ ] Query database with `sqlite3 data/financial_data.db`
 - [ ] Schedule with cron or Task Scheduler (optional)
-- [ ] Review `src/include/data_utils.hpp` for advanced analysis capabilities
 
 ---
 

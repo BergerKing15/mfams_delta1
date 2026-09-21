@@ -119,7 +119,6 @@ up any `Strategy` subclass; `app/example_custom_strategy.py` is the template.
   `config.example.json` is the committed placeholder template. Never put real keys in the
   example, and don't echo keys into logs, docs, or commit messages. Note that the keys are
   still present in git history from before the file was untracked.
-- `src/include/data_utils.hpp` is dead code — nothing includes it.
 - The two cleaning stages are independent by design: `RepairOutliers` fixes *values*
   (in place, marking the bar `filled`), `FillMissingDays` fixes *calendar gaps*. They used
   to interact — deleting a bar left a hole the filler papered over with the previous day's
