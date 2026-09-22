@@ -1,3 +1,9 @@
+[runner]
+# Nothing in this app uses bare-expression auto-display (every statement is an
+# explicit st.xxx() call), so magic's AST rewrite pass has nothing to do here.
+# It costs ~50-70ms per script parse for zero benefit on this codebase.
+magicEnabled = false
+
 [client]
 showErrorDetails = false
 
