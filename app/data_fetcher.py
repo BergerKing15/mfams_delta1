@@ -32,8 +32,9 @@ class DataFetcher:
             params = {
                 'series_id': series_id,
                 'api_key': api_key,
-                'from_date': start_date,
-                'to_date': end_date,
+                # FRED's parameter names; 'from_date'/'to_date' are silently ignored
+                'observation_start': start_date,
+                'observation_end': end_date,
                 'file_type': 'json'
             }
             

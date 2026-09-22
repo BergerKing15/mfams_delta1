@@ -5,7 +5,8 @@
     "series": [
       "UNRATE",
       "CPIAUCSL",
-      "FEDFUNDS"
+      "FEDFUNDS",
+      "PAYEMS"
     ]
   },
   "alphaVantage": {

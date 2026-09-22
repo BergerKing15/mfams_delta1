@@ -74,8 +74,8 @@ public:
         if (curl) {
             std::string url = baseURL + "?series_id=" + seriesId + 
                             "&api_key=" + apiKey +
-                            "&from_date=" + startDate +
-                            "&to_date=" + endDate +
+                            "&observation_start=" + startDate +
+                            "&observation_end=" + endDate +
                             "&file_type=json";
 
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
