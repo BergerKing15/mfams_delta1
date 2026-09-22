@@ -397,6 +397,42 @@ crontab -e
 - [ ] Data validation and sanity checks
 - [ ] Logging to file
 
+## Validating a Strategy
+
+A backtest tuned until it looks good is not evidence. `app/optimize.py` measures the
+difference between a tuned result and an honest one.
+
+```bash
+python app/optimize.py --symbol GDX --strategy "MA Crossover"
+```
+
+It reports two numbers:
+
+- **In-sample sweep**: the best Sharpe across the parameter grid, scored on the whole
+  sample. This is what you get by hunting for the best setting and quoting it.
+- **Walk-forward**: parameters chosen using only data up to a point in time, then scored
+  on the period that follows, across several anchored folds. Nothing is chosen with
+  knowledge of the window it is scored on.
+
+The gap is the **overfitting premium**. On the bundled data it is large:
+
+```
+strategy                     best in-sample  mean OOS  premium
+Z-Score (Macro Signal)                -0.69     -3.21     2.53
+MA Crossover                           1.38     -2.62     4.00
+RSI (Overbought/Oversold)              1.62      0.24     1.39
+Mean Reversion                         0.19     -2.40     2.58
+```
+
+MA Crossover tuned to 10/30 shows a Sharpe of 1.38 on the full sample and -2.62 out of
+sample. The tuned number is an artifact of the sample, and without this comparison it
+would look like a working strategy.
+
+The same sweep is available in the dashboard under **Validation**, along with a
+cross-symbol check. Read that check carefully: the default universe is mostly gold
+miners whose daily returns correlate about 0.77, so eight symbols carry roughly two
+independent bets, not eight.
+
 ## Known Limitations
 
 Things the data itself cannot support, worth knowing before trusting a backtest.

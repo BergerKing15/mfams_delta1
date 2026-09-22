@@ -90,6 +90,13 @@ position one day, books transaction costs from `transaction_cost_bps`, and fills
 enough data (the dashboard turns `None` into a user-facing "adjust parameters" message
 rather than a crash).
 
+`app/optimize.py` holds the validation tooling: `sweep()` (in-sample grid search),
+`walk_forward()` (anchored folds, parameters chosen on past data only) and
+`compare_symbols()`. A new strategy should get an entry in `PARAM_GRIDS` there, kept
+small — the sample is ~100 days and a big grid just manufactures an in-sample winner.
+`evaluate(..., window=)` scores a slice while letting indicators warm up on earlier rows,
+which is sound only because every signal is causal.
+
 `Strategy.calculate_metrics()` derives Sharpe, drawdown and per-trade statistics.
 `win_rate` is per *trade* (an unbroken stretch of exposure, via `extract_trades()`);
 `win_rate_days` is the day-level figure. Don't conflate them.

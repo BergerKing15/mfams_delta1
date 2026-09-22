@@ -116,6 +116,23 @@ in [STRATEGIES.md](STRATEGIES.md).
 To try one without editing the repo, use the **Upload Custom Strategy** panel;
 `app/example_custom_strategy.py` is a working template.
 
+## 🔬 Validation
+
+The **Validation: Parameter Sweep & Walk-Forward** section runs the full parameter grid
+in-sample, then runs walk-forward folds in which parameters are selected using only data
+that precedes the window they are scored on. It reports the overfitting premium - the
+difference between the two - and warns when a tuned result fails to survive.
+
+It also applies the in-sample winner to every symbol in the database. Treat agreement
+there cautiously: the default universe is mostly gold miners correlating about 0.77 with
+one another, so it is closer to two independent bets than eight.
+
+The same analysis is available headlessly:
+
+```bash
+python app/optimize.py --symbol GDX --strategy "MA Crossover" --splits 4
+```
+
 ## 📊 Data Sources
 - **FRED API**: Economic indicators (1947-present), published with a release lag the
   dashboard models

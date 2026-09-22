@@ -110,6 +110,16 @@ database as a realistic setting.
 dividend adjustment, treat every metric as a way to compare parameter choices against each
 other, not as evidence that a strategy works. See "Known Limitations" in the README.
 
+## Validating a Strategy
+
+Before trusting any parameter setting, run it through `app/optimize.py` (or the
+dashboard's **Validation** section). It sweeps the parameter grid in-sample, then runs
+walk-forward folds that choose parameters on past data only, and reports the gap.
+
+When you add a strategy, add its grid to `PARAM_GRIDS` in `app/optimize.py` so it can be
+validated the same way. Keep grids small - with ~100 trading days, a large grid
+guarantees a flattering in-sample winner that means nothing.
+
 ## Creating Custom Strategies
 
 ### Step 1: Understand the Base Class

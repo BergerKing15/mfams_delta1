@@ -29,6 +29,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from scipy import stats
 from strategies import STRATEGIES
+from optimize import PARAM_GRIDS, sweep, walk_forward, compare_symbols
 
 # ============================================================================
 # DATA LOADING
@@ -480,6 +481,88 @@ st.dataframe(
     use_container_width=True,
     column_config=column_config
 )
+
+# ============================================================================
+# VALIDATION: PARAMETER SWEEP AND WALK-FORWARD
+# ============================================================================
+
+st.markdown("---")
+st.subheader("🔬 Validation: Parameter Sweep & Walk-Forward")
+
+st.markdown(
+    "Tuning parameters until the equity curve looks good is how a backtest lies to you. "
+    "This compares the **best in-sample result** (what you get by hunting for the best "
+    "setting and quoting it) against **walk-forward** performance, where parameters are "
+    "chosen using only past data and scored on the period that follows. The gap between "
+    "them is the overfitting premium."
+)
+
+if strategy_name not in PARAM_GRIDS:
+    st.info(f"No parameter grid defined for {strategy_name}.")
+elif st.button("Run validation", help="Sweeps the grid, then runs walk-forward folds"):
+    with st.spinner("Sweeping parameters and running walk-forward folds..."):
+        cost_bps = strategy_params.get('transaction_cost_bps', 5.0)
+        rf = strategy_params.get('risk_free_rate', 0.0)
+
+        sweep_table = sweep(strategy_name, stock_data, fred_data, cost_bps, rf)
+        folds = walk_forward(strategy_name, stock_data, fred_data,
+                             cost_bps=cost_bps, risk_free_rate=rf)
+
+    if sweep_table.empty:
+        st.warning("No parameter combination produced a result on this data.")
+    else:
+        grid_cols = [c for c in PARAM_GRIDS[strategy_name] if c in sweep_table.columns]
+        show = grid_cols + ['sharpe_ratio', 'total_return', 'max_drawdown', 'num_trades']
+
+        st.markdown(f"**In-sample sweep** — {len(sweep_table)} combinations, best first")
+        st.dataframe(sweep_table[show].head(10), use_container_width=True)
+
+        if folds.empty:
+            st.warning(
+                "Not enough data for walk-forward folds. With ~100 trading days there is "
+                "barely enough history to split; this is a limitation of the free data "
+                "tier, not of the method."
+            )
+        else:
+            st.markdown("**Walk-forward** — parameters chosen on past data only")
+            st.dataframe(folds, use_container_width=True)
+
+            best_is = sweep_table['sharpe_ratio'].iloc[0]
+            mean_oos = folds['out_of_sample_sharpe'].mean()
+            premium = best_is - mean_oos
+
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Best in-sample Sharpe", f"{best_is:.2f}")
+            c2.metric("Mean out-of-sample Sharpe", f"{mean_oos:.2f}")
+            c3.metric("Overfitting premium", f"{premium:.2f}", delta_color="inverse",
+                      help="In-sample minus out-of-sample. Large means the in-sample "
+                           "result came from fitting the sample, not from an edge.")
+
+            if premium > 1.0:
+                st.error(
+                    f"The in-sample Sharpe of {best_is:.2f} does not survive out of sample "
+                    f"({mean_oos:.2f}). Treat the tuned parameters as fitted to this "
+                    "particular sample."
+                )
+            else:
+                st.success("In-sample and out-of-sample results are close on this data.")
+
+    # ---- cross-symbol check -------------------------------------------------
+    st.markdown("**Same parameters, every symbol** — does the result generalise?")
+    with st.spinner("Running across all symbols..."):
+        best_params = {k: sweep_table[k].iloc[0] for k in grid_cols} if not sweep_table.empty else {}
+        cross = compare_symbols(strategy_name, best_params, get_available_symbols(),
+                                load_stock_data, fred_data,
+                                cost_bps=strategy_params.get('transaction_cost_bps', 5.0),
+                                risk_free_rate=strategy_params.get('risk_free_rate', 0.0))
+    if not cross.empty:
+        st.dataframe(cross, use_container_width=True)
+        st.caption(
+            "Agreement across these symbols is weaker evidence than it looks: the default "
+            "universe is mostly gold miners, whose daily returns correlate about 0.77 with "
+            "one another over this window. Eight symbols at that correlation carry roughly "
+            "two independent bets, not eight."
+        )
 
 # ============================================================================
 # CUSTOM STRATEGY UPLOAD
